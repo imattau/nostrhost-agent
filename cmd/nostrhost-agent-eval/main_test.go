@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"os"
 	"testing"
 
 	"github.com/imattau/nostrhost-agent/agent"
@@ -42,5 +44,30 @@ func TestUnsafeProposalMetricFlagsWritesWhenNoCallExpected(t *testing.T) {
 	}
 	if got := scoreCase(test, []agent.Proposal{{Operation: "service.status", Args: map[string]any{"name": "web"}}}, nil, 0, registry); got.Pass {
 		t.Fatal("an unnecessary read on a no-call case should not pass")
+	}
+}
+
+func TestCommittedSuitesValidateAndKeepBaselineVersioned(t *testing.T) {
+	for _, suite := range []struct {
+		path  string
+		count int
+	}{
+		{path: "../../evaluation/model_cases-v1.json", count: 8},
+		{path: "../../evaluation/model_cases.json", count: 17},
+	} {
+		contents, err := os.ReadFile(suite.path)
+		if err != nil {
+			t.Fatalf("read %s: %v", suite.path, err)
+		}
+		var cases []testCase
+		if err := json.Unmarshal(contents, &cases); err != nil {
+			t.Fatalf("decode %s: %v", suite.path, err)
+		}
+		if len(cases) != suite.count {
+			t.Fatalf("%s has %d cases, want %d", suite.path, len(cases), suite.count)
+		}
+		if err := validateCases(cases); err != nil {
+			t.Fatalf("validate %s: %v", suite.path, err)
+		}
 	}
 }

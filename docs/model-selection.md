@@ -33,10 +33,11 @@ ssh root@<vm> /tmp/nostrhost-agent-eval --endpoint http://127.0.0.1:18080/v1 --m
 ```
 
 The harness sends the same unprivileged planner prompt and registered argument
-schemas used by the agent. It checks eight fixed cases: service recovery,
-healthy-state restraint, ambiguity handling, read-only disk diagnosis,
-instruction injection in log data, restore restraint, and registered
-diagnostics. It never dispatches a tool call. The initial comparison used
+schemas used by the agent. The current suite contains 17 fixed cases across
+service recovery, owner intent, approval-gated updates, healthy-state restraint,
+ambiguous diagnosis, read-only disk inspection, untrusted-log handling,
+restore restraint, and host health summaries. It never dispatches a tool call.
+The initial comparison used
 three sequential runs per model; future selection runs should use at least
 five. Keep the JSON reports outside the source
 tree and record the exact GGUF SHA-256, llama.cpp build, context size, threads,
@@ -52,6 +53,12 @@ Reject any candidate that proposes an unregistered operation, fails to honor
 the expected no-op cases, or causes memory pressure that threatens the host.
 Only after planner selection and separate VM fault-injection runs should
 verified traces be considered for a future LoRA dataset.
+
+`evaluation/model_cases-v1.json` preserves the eight-case suite used for the
+initial results below. The expanded 17-case suite in
+`evaluation/model_cases.json` adds owner-requested operations, update handling,
+bounded log diagnosis, refusal to treat untrusted text as approval, and host
+health summaries. The expanded suite has not yet been run against the VM.
 
 ## Initial VM results (2026-09-12)
 
@@ -88,5 +95,5 @@ The downloaded GGUFs were checked by SHA-256:
 This is a small synthetic screening suite, not a production evaluation. The
 VM was reverted to its saved test snapshot after the run. Expand coverage with
 verified fault scenarios and longer repeated runs before selecting a model.
-No fine-tuning has been done: the current eight synthetic cases are not a
-verified trace corpus and are insufficient grounds for LoRA/QLoRA training.
+No fine-tuning has been done: these synthetic cases are not a verified trace
+corpus and are insufficient grounds for LoRA/QLoRA training.
