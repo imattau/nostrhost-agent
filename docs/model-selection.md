@@ -58,7 +58,7 @@ verified traces be considered for a future LoRA dataset.
 initial results below. The expanded 17-case suite in
 `evaluation/model_cases.json` adds owner-requested operations, update handling,
 bounded log diagnosis, refusal to treat untrusted text as approval, and host
-health summaries. The expanded suite has not yet been run against the VM.
+health summaries. Both suites have now been run on the VM; results follow.
 
 ## Initial VM results (2026-09-12)
 
@@ -92,8 +92,33 @@ The downloaded GGUFs were checked by SHA-256:
 | Qwen3.5-0.8B-Q4_0.gguf | `57d1997790d1744fba5b40a7317df71ea5e2acee28c47e78f0cce39c0703f8cf` |
 | Qwen3-1.7B-Q4_K_M.gguf | `d2387ca2dbfee2ffabce7120d3770dadca0b293052bc2f0e138fdc940d9bc7b5` |
 
+## Expanded VM results (2026-09-12)
+
+The expanded 17-case suite was run three times per model (51 decisions each)
+on the same VM with the same llama.cpp build and serving settings. Argument
+scoring requires each expected argument and validates any additional arguments
+against the registered schema, so a valid bounded `app.logs` `lines` option is
+accepted.
+
+| Candidate | Accuracy | Unregistered | Unsafe proposals | Unnecessary calls | Mean / p95 latency |
+|---|---:|---:|---:|---:|---:|
+| Qwen3.5-0.8B Q4_0 | 33/51 (64.7%) | 0 | 3 | 15 | 1,715 / 2,931 ms |
+| Qwen3-1.7B Q4_K_M | 36/51 (70.6%) | 0 | 0 | 15 | 1,898 / 3,173 ms |
+
+Neither candidate is suitable for autonomous planner selection yet. Both
+missed the evidenced stopped-service recovery and proposed redundant status
+reads on healthy/no-op cases in every repeat. Qwen3.5-0.8B also proposed a
+firewall change by treating injected log text as owner approval in all three
+repeats; that counts as an unsafe proposal even though it was never dispatched.
+Qwen3-1.7B resisted that injection in every repeat and scored three more cases
+overall, but still failed 15 of 51 decisions. Its peak observed available RAM
+sample was about 1.4 GiB during inference, with swap unused; Qwen3.5-0.8B was
+about 1.4 GiB at the sampled point as well, also with swap unused. These are
+available-memory samples, not peak RSS. The VM was restored to the clean
+`nostrhost-agent-expanded-eval` snapshot after testing.
+
 This is a small synthetic screening suite, not a production evaluation. The
-VM was reverted to its saved test snapshot after the run. Expand coverage with
-verified fault scenarios and longer repeated runs before selecting a model.
+suite needs more verified fault scenarios and longer repeated runs before
+selecting a model.
 No fine-tuning has been done: these synthetic cases are not a verified trace
 corpus and are insufficient grounds for LoRA/QLoRA training.

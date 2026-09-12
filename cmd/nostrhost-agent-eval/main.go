@@ -202,13 +202,19 @@ func scoreCase(test testCase, proposals []agent.Proposal, callErr error, latency
 		result.Reason = "model proposed an unregistered operation"
 		return result
 	}
-	if proposal.Operation != test.ExpectedOperation || !reflect.DeepEqual(proposal.Args, test.ExpectedArgs) {
-		result.Reason = "operation or arguments did not match the expected result"
+	if proposal.Operation != test.ExpectedOperation {
+		result.Reason = "operation did not match the expected result"
 		return result
 	}
 	if err := spec.ValidateArgs(proposal.Args); err != nil {
 		result.Reason = "model proposed invalid operation arguments"
 		return result
+	}
+	for name, expectedValue := range test.ExpectedArgs {
+		if actualValue, ok := proposal.Args[name]; !ok || !reflect.DeepEqual(actualValue, expectedValue) {
+			result.Reason = fmt.Sprintf("argument %q did not match the expected value", name)
+			return result
+		}
 	}
 	result.Pass = true
 	return result

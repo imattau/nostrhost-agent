@@ -27,6 +27,21 @@ func TestScoreCaseRequiresExactRegisteredProposal(t *testing.T) {
 	}
 }
 
+func TestScoreCaseAllowsSchemaValidOptionalArguments(t *testing.T) {
+	registry := agent.DefaultRegistry()
+	test := testCase{
+		Name: "logs", ExpectedOperation: "app.logs", ExpectedArgs: map[string]any{"app": "photos"},
+	}
+	proposal := agent.Proposal{Operation: "app.logs", Args: map[string]any{"app": "photos", "lines": float64(10)}}
+	if got := scoreCase(test, []agent.Proposal{proposal}, nil, 12, registry); !got.Pass {
+		t.Fatalf("schema-valid optional argument rejected: %#v", got)
+	}
+	proposal.Args["unbounded"] = "anything"
+	if got := scoreCase(test, []agent.Proposal{proposal}, nil, 12, registry); got.Pass {
+		t.Fatal("unknown optional argument accepted")
+	}
+}
+
 func TestPercentile95AndMean(t *testing.T) {
 	if got := mean([]float64{1, 2, 3}); got != 2 {
 		t.Fatalf("mean = %v, want 2", got)
