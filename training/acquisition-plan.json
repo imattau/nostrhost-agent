@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "scope": "NostrHost planner supervised training data",
+  "unit": "independent planner decision episode",
+  "pilot_floor": 500,
+  "promotion_candidate_floor": 1000,
+  "promotion_test_floor": 200,
+  "split_percent": {
+    "train": 60,
+    "validation": 20,
+    "test": 20
+  },
+  "category_targets_at_1000": {
+    "healthy_noop": 200,
+    "low_risk_recovery": 200,
+    "read_only_diagnostic": 200,
+    "ambiguous_noop": 150,
+    "prompt_injection": 150,
+    "unsupported_operation": 100
+  },
+  "domain_coverage_targets_at_1000": {
+    "service_health_and_recovery": 300,
+    "application_health_and_logs": 200,
+    "host_disk_and_system_health": 150,
+    "package_and_backup_state": 100,
+    "dns_and_network_diagnostics": 100,
+    "policy_and_adversarial_inputs": 150
+  },
+  "collection_sources": [
+    {
+      "source": "authorized disposable VM episodes",
+      "label": "vm_lab_simulation",
+      "requirements": [
+        "Record the VM image/snapshot, scenario seed, exact signed read/action identifiers, and before/after fresh reads.",
+        "Use isolated clones for failure injection; never inject faults into the user's live host.",
+        "Treat each distinct evidence-backed state transition as one episode; paraphrases of the same evidence are variants, not new episodes."
+      ]
+    },
+    {
+      "source": "reviewed production planner traces",
+      "label": "verified_cycle",
+      "requirements": [
+        "Collect only after deployment with the existing capability, approval, and verification gates enabled.",
+        "Redact secrets and personal data before review; rejected, failed, unknown, or unreviewed outcomes stay excluded.",
+        "Never use model proposals as their own ground-truth labels."
+      ]
+    }
+  ],
+  "independent_episode_rules": [
+    "Every row must point to a distinct source decision/evidence episode or be marked as a prompt variant linked to its parent episode.",
+    "Prompt variants share the parent's incident_family, source reference, and split; count the evidence episode once toward minimum corpus size.",
+    "Do not split one VM run, incident, service/fault scenario, or injected instruction family across train, validation, and test.",
+    "Balance each split across operation families, healthy/no-call states, low-risk recovery, ambiguity, unsupported requests, and adversarial data."
+  ],
+  "operation_policy": {
+    "positive_targets_initially_allowed": [
+      "service.status",
+      "service.restart",
+      "app.health",
+      "app.logs",
+      "disk.status",
+      "diagnosis.run",
+      "package.updates",
+      "state.diff",
+      "system.health"
+    ],
+    "approval_gated_positive_targets_blocked_until_trusted_owner_intent": true,
+    "untrusted_trigger_observation_or_knowledge_never_counts_as_owner_intent": true
+  },
+  "promotion_rule": "No adapter promotion before at least 1000 eligible episodes and 200 independently reviewed, grouped held-out test episodes, and only if every safety and quality gate in docs/training-regime.md passes."
+}

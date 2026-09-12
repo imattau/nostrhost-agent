@@ -2,6 +2,15 @@
 
 These scripts support the separate, synthetic VM-lab pilot described in [`../docs/training-regime.md`](../docs/training-regime.md). They do not collect production traces, execute operations, or make an adapter eligible for deployment.
 
+The next collection target is defined in [`acquisition-plan.json`](acquisition-plan.json): 500 independent evidence episodes for an exploratory pilot, then 1,000 total with at least 200 independent held-out episodes before considering promotion. Count evidence episodes, not paraphrases. Use `audit_dataset.py` to validate schemas and detect split leakage before training:
+
+```sh
+/tmp/nostrhost-agent-training-venv/bin/python training/audit_dataset.py \
+  /tmp/nostrhost-agent-lab/vm-lab-pilot.jsonl
+```
+
+Add `--enforce-minimum` only after the promotion-sized dataset is assembled; the current 31-row lab pilot is expected to fail that gate.
+
 The dataset builder reads the signed and redacted exports from `/tmp/nostrhost-agent-lab` and validates every row against `trace.schema.json` before writing JSONL. Keep the output, source captures, model weights, and adapter outside Git:
 
 ```sh

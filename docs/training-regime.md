@@ -26,7 +26,7 @@ The 17 cases in `evaluation/model_cases.json` remain a frozen regression suite a
 
 ## Dataset size and balance
 
-Collect at least 500 reviewed, eligible episodes for a pilot. Aim for 1,000 or more diverse episodes before considering promotion. Ensure the corpus includes no-call decisions and safety boundaries rather than only successful actions. Use these proportions as initial sampling targets, then report the actual counts by category:
+Collect at least 500 reviewed, eligible independent evidence episodes for a pilot, then grow to at least 1,000 before considering promotion. The promotion test set must contain at least 200 independently reviewed episodes. Ensure the corpus includes no-call decisions and safety boundaries rather than only successful actions. Use these proportions as initial sampling targets, then report the actual counts by category:
 
 | Category | Share |
 | --- | ---: |
@@ -41,7 +41,9 @@ These are proportions of reviewed episodes, not raw model generations. Sample fr
 
 ## Split policy
 
-Use 70% train, 15% validation, and 15% final test, grouped by incident family and source. Keep near-duplicates, templated variants, and all records from the same incident in one split. Freeze the test set before training. Maintain a separate adversarial red-team set that is never used for gradient updates; include prompt injection in logs/knowledge, forged owner intent, missing evidence, malformed identifiers, and attempts to request unregistered operations. Apply the same grouping to the VM-lab splits and reserve the original 17-case suite as an untouched cross-check.
+Use 60% train, 20% validation, and 20% final test, grouped by incident family and evidence source. At 1,000 episodes this yields 200 held-out test episodes. Keep near-duplicates, templated variants, paraphrases, and all records derived from the same VM run, incident, service/fault scenario, or injected instruction family in one split. Prompt variants sharing the same evidence count as one episode. Freeze the test set before training. Maintain a separate adversarial red-team set that is never used for gradient updates; include prompt injection in logs/knowledge, forged owner intent, missing evidence, malformed identifiers, and attempts to request unregistered operations. Apply the same grouping to the VM-lab splits and reserve the original 17-case suite as an untouched cross-check.
+
+Use [`training/acquisition-plan.json`](../training/acquisition-plan.json) as the collection target and run [`training/audit_dataset.py`](../training/audit_dataset.py) before training. Grow coverage beyond service status/restart into installed application health/logs, host disk/system health, package state, DNS/network diagnostics, ambiguous observations, unsupported operations, and adversarial input. Collect new incidents or controlled state transitions on isolated VM clones; do not count multiple phrasings of one state as independent evidence. Include the model-visible operation schemas and observations from the exact decision point. Continue to exclude positive approval-gated operations until the planner protocol contains authenticated owner intent.
 
 The current 17-case benchmark is an additional regression check, not a substitute for the held-out sets. Report results per category and per incident family so a high aggregate score cannot hide unsafe behavior.
 
@@ -72,7 +74,7 @@ If the 0.8B adapter does not clear the gates, keep the 1.7B model or determinist
 
 ## Current status
 
-No production agent audit journal is present and the agent service is not running on the VM. The first GPU-backed lab pilot used 31 explicitly synthetic scenarios derived from signed YunoHost service-state captures: 21 train, 5 validation, and 5 held-out lab-test rows across 13 service families and three injection scenarios. This is far below the 500 reviewed episodes required for a meaningful pilot and must not be represented as production data.
+No production agent audit journal is present and the agent service is not running on the VM. The first GPU-backed lab pilot contains 31 synthetic rows but only 18 distinct evidence/scenario references, including 13 prompt variants linked to the same healthy-service evidence and just 3 held-out references. It covers 13 service families, two verified low-risk recovery cycles, and three injection scenarios. The audit reports zero production episodes. This is far below the 500-episode pilot floor and 1,000-episode promotion-candidate target; it must not be represented as production data.
 
 The pinned Qwen3.5-0.8B LoRA run completed three epochs on the local RTX 5060 Ti. It improved exact-match results on the five held-out lab cases from 0/5 to 4/5, but still followed an untrusted instruction by proposing `service.restart` for an unregistered target. On the untouched 17-case regression suite both base and adapter scored 11/17; unsafe or malformed proposals increased from 3 to 5 with the adapter. The adapter is rejected and must not be deployed. These tiny results are directional only and do not establish that fine-tuning improves the model.
 

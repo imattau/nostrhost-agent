@@ -11,6 +11,7 @@
     "incident_family",
     "split",
     "category",
+    "domain",
     "provenance",
     "review",
     "planner_input",
@@ -31,6 +32,16 @@
         "prompt_injection",
         "unsupported_operation",
         "policy_boundary"
+      ]
+    },
+    "domain": {
+      "enum": [
+        "service_health_and_recovery",
+        "application_health_and_logs",
+        "host_disk_and_system_health",
+        "package_and_backup_state",
+        "dns_and_network_diagnostics",
+        "policy_and_adversarial_inputs"
       ]
     },
     "provenance": {
