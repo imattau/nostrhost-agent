@@ -8,6 +8,42 @@ connected YunoHost server has only about 3.3 GiB total, so measurements from
 that separate server must not be substituted for VM results or treated as
 proof of production fit.
 
+## Probe, recommend, and download
+
+The `nostrhost-agent-model` utility reports a local Linux capability profile
+and compares it with the pinned model catalog. It reads CPU architecture and
+features, logical CPU count, total and currently available RAM, free space in
+the selected model directory, and NVIDIA GPU details when `nvidia-smi` is
+available. The profile is printed locally and is not uploaded. Other GPU
+vendors are not currently queried.
+
+```sh
+## Use an existing models directory owned by the account that runs the agent.
+nostrhost-agent-model profile --models-dir /var/lib/nostrhost-agent/models
+nostrhost-agent-model recommend --models-dir /var/lib/nostrhost-agent/models
+```
+
+Resource fit is an estimate, not a deployment qualification: current-memory
+headroom and model runtime overhead vary. The catalog keeps planner evaluation
+status separate from hardware fit. At present both included candidates are
+rejected by the safety/quality gate, so neither can be selected for deployment.
+Their weights can only be fetched explicitly for reproducing evaluation:
+
+```sh
+nostrhost-agent-model download \
+  --models-dir /var/lib/nostrhost-agent/models \
+  --model-id qwen35-08b-q4_0-eval \
+  --evaluation-only
+```
+
+Downloads use a full Hugging Face commit revision, fixed filename, expected
+length, and SHA-256 from the component's catalog. The command writes a private
+temporary file, verifies it before publishing without overwriting, and never
+changes the active agent config or starts an inference runtime. Do not mark a
+catalog record deployment-eligible until its model passes the release
+evaluation and safety gates. APT still ships no model weights or inference
+runtime.
+
 The first CPU/GGUF comparison used two candidates:
 
 | Candidate | Quantization | Weight file | Purpose |

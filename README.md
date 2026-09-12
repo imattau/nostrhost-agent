@@ -114,6 +114,7 @@ offline by default; no operator data is automatically sent to the project.
 go test ./...
 go build ./cmd/nostrhost-agent
 go build ./cmd/nostrhost-agent-export
+go build ./cmd/nostrhost-agent-model
 ```
 
 Run the deterministic recovery and safety evaluation with
@@ -125,6 +126,10 @@ The planner-only local model selection suite is available through
 `go run ./cmd/nostrhost-agent-eval --model <local-model-id>`; candidate models,
 hardware constraints, and measurement rules are in
 [`docs/model-selection.md`](docs/model-selection.md).
+Use `nostrhost-agent-model profile` and `recommend` to inspect local resource
+fit. Model downloads are pinned and hash-verified, require explicit
+evaluation-only intent for the currently unqualified candidates, and never
+change the active runtime configuration.
 
 The daemon accepts a strict JSON config through `--config` (default
 `/etc/nostrhost-agent/config.json`). Store it with mode `0600`; the loader
