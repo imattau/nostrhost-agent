@@ -48,24 +48,34 @@ lifecycle.
   arguments from persisted traces.
 
 There is no shell operation. The agent cannot change its own capabilities or
-disable audit. The host must provide typed operation adapters, a verifier that
-re-reads current health, and an approval gate that checks signed owner approval.
-The relay adapter only allows loopback relay URLs and uses the agent identity
-for NIP-42 authentication; NostrHost's operation daemon remains authoritative
-for per-operation authorization, request-bound signed owner approval, and
-execution. Approval-gated requests are audited locally before dispatch and
-wait for the daemon's correlated result. The local planner only emits
-typed proposals and cannot execute operations. The current index is rebuilt in
-memory from an operator-managed local corpus and uses lexical search; semantic
-embeddings and verified-history ingestion are subsequent increments. Host
-integrators provide the concrete observers, audit sink, approval verifier, and
-service manager for their NostrHost installation.
+disable audit. The NostrHost operation daemon remains authoritative for
+per-operation authorization, request-bound signed owner approval, and machine
+changes. The agent's loopback relay adapter uses the agent identity for NIP-42
+authentication. Approval-gated requests are audited locally before dispatch;
+the agent waits for the daemon's correlated result after approval and
+execution. The local planner only emits typed proposals and cannot execute
+operations. The current index is rebuilt in memory from an operator-managed
+local corpus and uses lexical search; semantic embeddings and verified-history
+ingestion are subsequent increments. Operators provide service-manager
+packaging and configure operation-specific verification rules.
 
 ## Development
 
 ```sh
 go test ./...
+go build ./cmd/nostrhost-agent
 ```
+
+The daemon accepts a strict JSON config through `--config` (default
+`/etc/nostrhost-agent/config.json`). Store it with mode `0600`; the loader
+rejects symlinks, group/other permissions, unknown fields, and files over
+256 KiB. Intervals and relay result timeouts use Go duration strings such as
+`"6h"` and `"90s"`. Observe mode does not require an inference endpoint. For
+maintain/autonomous mode, configure a loopback inference endpoint and a fresh
+read verification rule for each operation the agent may execute.
+An observe-only starting point is provided in
+[`examples/config.observe.example.json`](examples/config.observe.example.json);
+replace both key placeholders before starting the daemon.
 
 ## License
 

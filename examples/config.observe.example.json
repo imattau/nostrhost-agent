@@ -1,0 +1,22 @@
+{
+  "relay": {
+    "relay_url": "ws://127.0.0.1:4848",
+    "agent_secret_key": "REPLACE_WITH_64_HEX_CHAR_AGENT_SECRET",
+    "trusted_server_key": "REPLACE_WITH_64_HEX_CHAR_SERVER_PUBKEY",
+    "result_timeout": "2m"
+  },
+  "policy": {
+    "level": "observe",
+    "capabilities": {
+      "health.read": true,
+      "system.read": true
+    }
+  },
+  "observation_queries": [
+    {"operation": "system.health"},
+    {"operation": "disk.status"}
+  ],
+  "audit_path": "/var/lib/nostrhost-agent/audit.jsonl",
+  "interval": "6h",
+  "run_immediately": true
+}
