@@ -78,3 +78,22 @@ func TestResidentRuntimeSkipsInferenceInObserveMode(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestResidentRuntimeBuildsFreshReadVerifierForMaintenance(t *testing.T) {
+	cfg := testRuntimeConfig(t)
+	cfg.Policy = Policy{Level: Maintain, Capabilities: map[Capability]bool{
+		HealthRead: true, ServiceRestart: true, SystemRead: true,
+	}}
+	cfg.Inference = LLMPlannerConfig{BaseURL: "http://127.0.0.1:8080", Model: "local-model"}
+	cfg.VerificationRules = []VerificationRule{{
+		Operation: "service.restart", CheckOperation: "service.status",
+		CheckArgs: map[string]string{"name": "name"}, ResultPath: "status", Expected: "active",
+	}}
+	runtime, err := NewResidentRuntime(cfg)
+	if err != nil {
+		t.Fatalf("maintenance runtime did not assemble configured verifier: %v", err)
+	}
+	if err := runtime.Close(); err != nil {
+		t.Fatal(err)
+	}
+}

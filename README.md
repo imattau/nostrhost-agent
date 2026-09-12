@@ -9,7 +9,8 @@ OpenAI-compatible planner, and the NostrHost operation relay adapter. Machine
 changes still run through NostrHost's authoritative operation daemon; all
 agent-side effects are behind typed interfaces. `NewResidentRuntime` wires the
 local planner, Nostr operation observer/executor, optional knowledge corpus,
-audit journal, and cycle service into one owned lifecycle.
+fresh-read verification rules, audit journal, and cycle service into one owned
+lifecycle.
 
 ## Initial scope
 
@@ -26,6 +27,8 @@ audit journal, and cycle service into one owned lifecycle.
   periodic maintenance, sequential execution, and fail-closed shutdown.
 - Build structured observations from explicitly selected read-only NostrHost
   operations; failed reads are represented without exposing adapter errors.
+- Verify configured actions by repeating a registered read-only operation and
+  comparing a selected result field against the expected value.
 - Publish signed kind-2200 operation requests to the local relay and accept
   only correlated, signature-verified kind-2204 results from the configured
   server identity.

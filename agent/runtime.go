@@ -14,6 +14,7 @@ type RuntimeConfig struct {
 	Registry            map[string]OperationSpec
 	Policy              Policy
 	ObservationQueries  []ObservationQuery
+	VerificationRules   []VerificationRule
 	KnowledgeCorpusPath string
 	AuditPath           string
 	Interval            time.Duration
@@ -63,6 +64,12 @@ func NewResidentRuntime(cfg RuntimeConfig) (*ResidentRuntime, error) {
 			return nil, fmt.Errorf("observation query %q requires disabled local capability %q", query.Operation, spec.Capability)
 		}
 	}
+	for _, rule := range cfg.VerificationRules {
+		spec, exists := registry[rule.CheckOperation]
+		if exists && !cfg.Policy.Capabilities[spec.Capability] {
+			return nil, fmt.Errorf("verification check %q requires disabled local capability %q", rule.CheckOperation, spec.Capability)
+		}
+	}
 
 	executor, err := NewControlPlaneExecutor(cfg.Relay, registry)
 	if err != nil {
@@ -84,6 +91,13 @@ func NewResidentRuntime(cfg RuntimeConfig) (*ResidentRuntime, error) {
 		planner, err = NewOpenAICompatiblePlanner(cfg.Inference)
 		if err != nil {
 			return nil, fmt.Errorf("create local planner: %w", err)
+		}
+	}
+	verifier := cfg.Verifier
+	if verifier == nil && autonomyRank[cfg.Policy.Level] >= autonomyRank[Maintain] {
+		verifier, err = NewNostrOperationVerifier(executor, registry, cfg.VerificationRules)
+		if err != nil {
+			return nil, fmt.Errorf("create Nostr operation verifier: %w", err)
 		}
 	}
 	audit, err := OpenJSONLAuditSink(cfg.AuditPath)
@@ -115,7 +129,7 @@ func NewResidentRuntime(cfg RuntimeConfig) (*ResidentRuntime, error) {
 	runner := CycleRunner{
 		Policy:   Policy{Level: cfg.Policy.Level, Capabilities: capabilities},
 		Registry: registry, Observer: observer, Planner: planner, Retriever: retriever,
-		Executor: executor, Approvals: cfg.Approvals, Verifier: cfg.Verifier,
+		Executor: executor, Approvals: cfg.Approvals, Verifier: verifier,
 		Audit: audit,
 	}
 	service := ResidentService{
