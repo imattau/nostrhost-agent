@@ -1,7 +1,12 @@
 // Package agent defines the unprivileged planner's typed operation boundary.
 package agent
 
-import "fmt"
+import (
+	"encoding/json"
+	"fmt"
+)
+
+const maxOperationArgsBytes = 64 * 1024
 
 // AutonomyLevel controls whether an otherwise-capable proposal may execute
 // without owner approval. Capability grants remain an independent hard limit.
@@ -127,6 +132,13 @@ func (p Policy) Evaluate(spec OperationSpec) PolicyResult {
 func (s OperationSpec) ValidateArgs(args map[string]any) error {
 	if s.validateArgs == nil {
 		return fmt.Errorf("operation %q has no argument validator", s.Name)
+	}
+	encoded, err := json.Marshal(args)
+	if err != nil {
+		return fmt.Errorf("operation arguments are not JSON-compatible")
+	}
+	if len(encoded) > maxOperationArgsBytes {
+		return fmt.Errorf("operation arguments exceed the %d-byte limit", maxOperationArgsBytes)
 	}
 	return s.validateArgs(args)
 }

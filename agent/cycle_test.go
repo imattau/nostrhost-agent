@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -239,6 +240,13 @@ func TestDefaultRegistryPublishesAndEnforcesSchemas(t *testing.T) {
 	}
 	if err := registry["service.restart"].ValidateArgs(map[string]any{"name": "nginx", "shell": "true"}); err == nil {
 		t.Fatal("unknown service restart argument accepted")
+	}
+}
+
+func TestOperationArgumentsHaveHardSizeLimit(t *testing.T) {
+	args := map[string]any{"app": strings.Repeat("a", maxOperationArgsBytes)}
+	if err := DefaultRegistry()["app.health"].ValidateArgs(args); err == nil {
+		t.Fatal("oversized operation arguments accepted")
 	}
 }
 
