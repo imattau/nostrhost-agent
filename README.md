@@ -7,7 +7,9 @@ boundaries, and auditable administration traces.
 The current increment establishes the deterministic policy boundary, a local
 OpenAI-compatible planner, and the NostrHost operation relay adapter. Machine
 changes still run through NostrHost's authoritative operation daemon; all
-agent-side effects are behind typed interfaces.
+agent-side effects are behind typed interfaces. `NewResidentRuntime` wires the
+local planner, Nostr operation observer/executor, optional knowledge corpus,
+audit journal, and cycle service into one owned lifecycle.
 
 ## Initial scope
 
