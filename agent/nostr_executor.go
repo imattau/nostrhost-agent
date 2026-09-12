@@ -35,6 +35,13 @@ type NostrOperationExecutor struct {
 	Registry             map[string]OperationSpec
 }
 
+// UsesAuthoritativeApprovalChain reports that kind-2204 results are only
+// emitted by the NostrHost daemon after its request-bound signed approval
+// check has completed for approval-gated operations.
+func (e *NostrOperationExecutor) UsesAuthoritativeApprovalChain() bool {
+	return e != nil && e.Transport != nil && validHex64(e.ExpectedServerPubkey)
+}
+
 // NewControlPlaneExecutor wires the loopback relay transport to the host's
 // operation registry and trusted server identity.
 func NewControlPlaneExecutor(cfg RelayTransportConfig, registry map[string]OperationSpec) (*NostrOperationExecutor, error) {

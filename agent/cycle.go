@@ -43,8 +43,17 @@ type OperationExecutor interface {
 	Execute(context.Context, OperationSpec, map[string]any) (map[string]any, error)
 }
 
-// ApprovalGate must verify a signed owner approval bound to this proposal and
-// its current policy context. A UI confirmation or planner output is not enough.
+// ApprovalChainExecutor identifies an executor whose authoritative control
+// plane waits for and verifies signed owner approval after it receives the
+// request. This is needed when approval events reference the request event ID.
+type ApprovalChainExecutor interface {
+	OperationExecutor
+	UsesAuthoritativeApprovalChain() bool
+}
+
+// ApprovalGate must verify signed owner approval bound to this proposal and
+// current policy context. The NostrHost executor can instead delegate the
+// request-bound approval step to the control plane after creating the request.
 type ApprovalGate interface {
 	Approve(context.Context, Proposal, PolicyResult) (bool, error)
 }
@@ -197,26 +206,34 @@ func (r CycleRunner) Run(ctx context.Context, request CycleRequest) (CycleTrace,
 		}
 		if result.Decision == DecisionApproval {
 			if r.Approvals == nil {
-				trace.Proposals[index].Outcome = "approval_unavailable"
-				if err := r.save(ctx, trace); err != nil {
-					return trace, fmt.Errorf("persist approval requirement: %w", err)
+				delegated, ok := r.Executor.(ApprovalChainExecutor)
+				if !ok || !delegated.UsesAuthoritativeApprovalChain() {
+					trace.Proposals[index].Outcome = "approval_unavailable"
+					if err := r.save(ctx, trace); err != nil {
+						return trace, fmt.Errorf("persist approval requirement: %w", err)
+					}
+					continue
 				}
-				continue
-			}
-			approved, approvalErr := r.Approvals.Approve(ctx, proposal, result)
-			if approvalErr != nil {
-				trace.Proposals[index].Outcome = "approval_check_failed"
+				trace.Proposals[index].Outcome = "approval_delegated"
 				if err := r.save(ctx, trace); err != nil {
-					return trace, fmt.Errorf("persist approval failure: %w", err)
+					return trace, fmt.Errorf("persist delegated approval requirement: %w", err)
 				}
-				continue
-			}
-			if !approved {
-				trace.Proposals[index].Outcome = "approval_denied"
-				if err := r.save(ctx, trace); err != nil {
-					return trace, fmt.Errorf("persist approval denial: %w", err)
+			} else {
+				approved, approvalErr := r.Approvals.Approve(ctx, proposal, result)
+				if approvalErr != nil {
+					trace.Proposals[index].Outcome = "approval_check_failed"
+					if err := r.save(ctx, trace); err != nil {
+						return trace, fmt.Errorf("persist approval failure: %w", err)
+					}
+					continue
 				}
-				continue
+				if !approved {
+					trace.Proposals[index].Outcome = "approval_denied"
+					if err := r.save(ctx, trace); err != nil {
+						return trace, fmt.Errorf("persist approval denial: %w", err)
+					}
+					continue
+				}
 			}
 		}
 		spec, ok := r.Registry[proposal.Operation]

@@ -91,6 +91,19 @@ func TestNostrOperationExecutorRequiresConfiguredServerIdentity(t *testing.T) {
 	}
 }
 
+func TestNostrOperationExecutorUsesRequestBoundHostApprovalChain(t *testing.T) {
+	executor := NostrOperationExecutor{
+		Transport: &fakeOperationTransport{}, ExpectedServerPubkey: strings.Repeat("b", 64),
+	}
+	if !executor.UsesAuthoritativeApprovalChain() {
+		t.Fatal("configured Nostr executor did not expose its host approval chain")
+	}
+	executor.Transport = nil
+	if executor.UsesAuthoritativeApprovalChain() {
+		t.Fatal("unconfigured Nostr executor claimed an approval chain")
+	}
+}
+
 func TestNostrOperationExecutorNeverPublishesUnregisteredOperation(t *testing.T) {
 	transport := &fakeOperationTransport{}
 	executor := NostrOperationExecutor{Transport: transport, ExpectedServerPubkey: strings.Repeat("b", 64)}

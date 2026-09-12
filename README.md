@@ -49,7 +49,9 @@ disable audit. The host must provide typed operation adapters, a verifier that
 re-reads current health, and an approval gate that checks signed owner approval.
 The relay adapter only allows loopback relay URLs and uses the agent identity
 for NIP-42 authentication; NostrHost's operation daemon remains authoritative
-for per-operation authorization and execution. The local planner only emits
+for per-operation authorization, request-bound signed owner approval, and
+execution. Approval-gated requests are audited locally before dispatch and
+wait for the daemon's correlated result. The local planner only emits
 typed proposals and cannot execute operations. The current index is rebuilt in
 memory from an operator-managed local corpus and uses lexical search; semantic
 embeddings and verified-history ingestion are subsequent increments. Host

@@ -42,6 +42,10 @@ func (f *fakeExecutor) Execute(_ context.Context, _ OperationSpec, args map[stri
 	return map[string]any{"status": "active"}, f.err
 }
 
+type approvalChainFakeExecutor struct{ *fakeExecutor }
+
+func (*approvalChainFakeExecutor) UsesAuthoritativeApprovalChain() bool { return true }
+
 type fakeApprovals struct {
 	approved bool
 	calls    int
@@ -69,10 +73,11 @@ func (f *fakeVerifier) Verify(_ context.Context, observations map[string]any, _ 
 }
 
 type fakeAudit struct {
-	saves  int
-	last   CycleTrace
-	failAt int
-	err    error
+	saves   int
+	last    CycleTrace
+	history []CycleTrace
+	failAt  int
+	err     error
 }
 
 func (f *fakeAudit) Save(_ context.Context, trace CycleTrace) error {
@@ -80,7 +85,12 @@ func (f *fakeAudit) Save(_ context.Context, trace CycleTrace) error {
 	if f.saves == f.failAt {
 		return f.err
 	}
-	f.last = trace
+	snapshot, err := sanitizedTraceCopy(trace)
+	if err != nil {
+		return err
+	}
+	f.last = snapshot
+	f.history = append(f.history, snapshot)
 	return nil
 }
 
@@ -187,6 +197,44 @@ func TestCycleRunnerRequiresApprovalForDestructiveOperation(t *testing.T) {
 	}
 	if approvals.calls != 1 || executor.calls != 0 || trace.Proposals[0].Outcome != "approval_denied" {
 		t.Fatalf("destructive op crossed approval boundary: approvals=%d executor=%d trace=%#v", approvals.calls, executor.calls, trace)
+	}
+}
+
+func TestCycleRunnerDoesNotDelegateApprovalToGenericExecutor(t *testing.T) {
+	planner := &fakePlanner{proposals: []Proposal{{Operation: "app.restore", Args: map[string]any{"app": "photos", "snapshot": "snapshot-1"}}}}
+	executor := &fakeExecutor{}
+	runner := testRunner(Autonomous, AppRestore, planner, executor, &fakeAudit{})
+	trace, err := runner.Run(context.Background(), CycleRequest{Trigger: "owner_request"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if executor.calls != 0 || trace.Proposals[0].Outcome != "approval_unavailable" {
+		t.Fatalf("generic executor crossed the approval boundary: calls=%d trace=%#v", executor.calls, trace)
+	}
+}
+
+func TestCycleRunnerDelegatesRequestBoundApprovalToNostrHost(t *testing.T) {
+	planner := &fakePlanner{proposals: []Proposal{{Operation: "app.restore", Args: map[string]any{"app": "photos", "snapshot": "snapshot-1"}}}}
+	audit := &fakeAudit{}
+	operation := &approvalChainFakeExecutor{fakeExecutor: &fakeExecutor{}}
+	runner := testRunner(Autonomous, AppRestore, planner, operation.fakeExecutor, audit)
+	runner.Executor = operation
+	runner.Verifier = &fakeVerifier{verified: true}
+	trace, err := runner.Run(context.Background(), CycleRequest{Trigger: "owner_request"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if operation.calls != 1 || trace.Proposals[0].Outcome != "verified" {
+		t.Fatalf("delegated approval did not pass through the control plane: calls=%d trace=%#v", operation.calls, trace)
+	}
+	foundDelegatedCheckpoint := false
+	for _, checkpoint := range audit.history {
+		if len(checkpoint.Proposals) == 1 && checkpoint.Proposals[0].Outcome == "approval_delegated" {
+			foundDelegatedCheckpoint = true
+		}
+	}
+	if !foundDelegatedCheckpoint {
+		t.Fatal("approval delegation was not audited before request dispatch")
 	}
 }
 
