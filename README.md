@@ -20,6 +20,8 @@ agent-side effects are behind typed interfaces.
 - Run a bounded Observe → Diagnose → Plan → Execute → Verify cycle through
   injected host interfaces; each cycle handles at most one proposal so the
   next action uses fresh observations.
+- Run the cycle engine as a resident service with reactive triggers, optional
+  periodic maintenance, sequential execution, and fail-closed shutdown.
 - Publish signed kind-2200 operation requests to the local relay and accept
   only correlated, signature-verified kind-2204 results from the configured
   server identity.
@@ -44,8 +46,9 @@ for NIP-42 authentication; NostrHost's operation daemon remains authoritative
 for per-operation authorization and execution. The local planner only emits
 typed proposals and cannot execute operations. The current index is rebuilt in
 memory from an operator-managed local corpus and uses lexical search; semantic
-embeddings, verified-history ingestion, and the resident service lifecycle are
-subsequent increments.
+embeddings and verified-history ingestion are subsequent increments. Host
+integrators provide the concrete observers, audit sink, approval verifier, and
+service manager for their NostrHost installation.
 
 ## Development
 
