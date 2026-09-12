@@ -50,6 +50,7 @@ type OperationSpec struct {
 	AutonomousAt     AutonomyLevel
 	RequiresApproval bool
 	ArgsSchema       string
+	SensitiveArgs    []string
 }
 
 // Proposal is a model-authored request to invoke a registered operation.
@@ -94,6 +95,9 @@ func (p Policy) Evaluate(spec OperationSpec) PolicyResult {
 	if spec.Name == "" || spec.Capability == "" {
 		return PolicyResult{Decision: DecisionDeny, Reason: "operation registry entry is incomplete"}
 	}
+	if spec.Risk > RiskDestructive {
+		return PolicyResult{Decision: DecisionDeny, Reason: "operation has invalid risk classification"}
+	}
 	if !p.Capabilities[spec.Capability] {
 		return PolicyResult{Decision: DecisionDeny, Reason: fmt.Sprintf("missing capability %q", spec.Capability)}
 	}
@@ -103,7 +107,7 @@ func (p Policy) Evaluate(spec OperationSpec) PolicyResult {
 	if p.Level == Assist {
 		return PolicyResult{Decision: DecisionProposalOnly, Reason: "assist mode proposes plans but never executes them"}
 	}
-	if spec.Risk >= RiskDestructive || spec.RequiresApproval {
+	if spec.Risk >= RiskElevated || spec.RequiresApproval {
 		return PolicyResult{Decision: DecisionApproval, Reason: "operation requires owner approval"}
 	}
 	threshold, ok := autonomyRank[spec.AutonomousAt]

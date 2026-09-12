@@ -13,15 +13,24 @@ planner and the NostrHost operation executor can share.
 - Describe operations using stable names and required capabilities.
 - Evaluate proposals under `observe`, `assist`, `maintain`, or `autonomous`
   autonomy levels.
+- Run a bounded Observe → Diagnose → Plan → Execute → Verify cycle through
+  injected host interfaces; signed approval checks and audit persistence sit
+  on the execution path.
 - Require the executor to re-check authorization and validate operation
   arguments; a policy decision is not an execution credential.
 - Record observations, proposals, policy outcomes, execution results, and
   verification in a structured cycle trace.
 - Deny unknown operations and destructive operations by default.
+- Save policy decisions before approval or execution, and save an `executing`
+  trace state before dispatching an operation.
+- Redact common credential-shaped fields and operation-declared sensitive
+  arguments from persisted traces.
 
 There is no shell operation. The agent cannot change its own capabilities or
-disable audit. Relay persistence, signed owner approvals, operation adapters,
-retrieval, and inference are subsequent increments.
+disable audit. The host must provide typed operation adapters, a verifier that
+re-reads current health, and an approval gate that checks signed owner approval.
+Relay persistence, concrete NostrHost adapters, retrieval, and inference are
+subsequent increments.
 
 ## Development
 

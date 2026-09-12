@@ -40,3 +40,30 @@ func TestPolicyRejectsInvalidRegistryThreshold(t *testing.T) {
 		t.Fatalf("decision = %q, want deny", got.Decision)
 	}
 }
+
+func TestElevatedRiskAlwaysRequiresApproval(t *testing.T) {
+	policy := Policy{Level: Autonomous, Capabilities: map[Capability]bool{PackageUpdate: true}}
+	spec := OperationSpec{Name: "package.upgrade", Capability: PackageUpdate, Risk: RiskElevated, AutonomousAt: Autonomous}
+	if got := policy.Evaluate(spec).Decision; got != DecisionApproval {
+		t.Fatalf("elevated operation decision = %q, want approval_required", got)
+	}
+}
+
+func TestAuditSanitizesProposalObservationsAndResults(t *testing.T) {
+	proposal := Proposal{Operation: "service.restart", Args: map[string]any{
+		"name": "web", "api-token": "sensitive", "nested": map[string]any{"nsec": "private"},
+	}}
+	safe := safeProposal(proposal, OperationSpec{SensitiveArgs: []string{"name"}}, true)
+	if safe.Args["api-token"] != redactedValue || safe.Args["name"] != redactedValue {
+		t.Fatalf("proposal arguments were not sanitized: %#v", safe.Args)
+	}
+	if got := safe.Args["nested"].(map[string]any)["nsec"]; got != redactedValue {
+		t.Fatalf("nested secret was not sanitized: %#v", safe.Args)
+	}
+	if proposal.Args["api-token"] != "sensitive" {
+		t.Fatal("sanitizer mutated the planner-owned proposal")
+	}
+	if got := sanitizeMap(map[string]any{"access_token": "x", "state": "active"}, nil); got["access_token"] != redactedValue || got["state"] != "active" {
+		t.Fatalf("structured result was not sanitized: %#v", got)
+	}
+}

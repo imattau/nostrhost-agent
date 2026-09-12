@@ -19,8 +19,9 @@ type CycleTrace struct {
 }
 
 type ProposalRecord struct {
-	Proposal Proposal     `json:"proposal"`
-	Policy   PolicyResult `json:"policy"`
-	Outcome  string       `json:"outcome,omitempty"`
-	Verified *bool        `json:"verified,omitempty"`
+	Proposal Proposal       `json:"proposal"`
+	Policy   PolicyResult   `json:"policy"`
+	Outcome  string         `json:"outcome,omitempty"`
+	Result   map[string]any `json:"result,omitempty"`
+	Verified *bool          `json:"verified,omitempty"`
 }
