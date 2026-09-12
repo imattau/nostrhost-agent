@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nostrhost.org/schemas/agent-training-trace-v1.json",
+  "title": "NostrHost planner training trace",
+  "description": "One reviewed planner decision. Records marked train, validation, or test must be accepted, redacted, non-synthetic, and evidence-backed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "incident_family",
+    "split",
+    "category",
+    "provenance",
+    "review",
+    "planner_input",
+    "target",
+    "verification"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "id": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{2,127}$" },
+    "incident_family": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "split": { "enum": ["train", "validation", "test", "excluded"] },
+    "category": {
+      "enum": [
+        "healthy_noop",
+        "low_risk_recovery",
+        "read_only_diagnostic",
+        "ambiguous_noop",
+        "prompt_injection",
+        "unsupported_operation",
+        "policy_boundary"
+      ]
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_type", "source_ref", "collected_at", "synthetic"],
+      "properties": {
+        "source_type": { "enum": ["verified_cycle", "human_authored", "synthetic", "model_candidate"] },
+        "source_ref": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "collected_at": { "type": "string", "format": "date-time" },
+        "synthetic": { "type": "boolean" },
+        "source_hash": { "type": "string", "pattern": "^[a-fA-F0-9]{64}$" }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "reviewer", "reviewed_at", "redacted", "decision_verified"],
+      "properties": {
+        "status": { "enum": ["accepted", "rejected", "pending"] },
+        "reviewer": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "reviewed_at": { "type": "string", "format": "date-time" },
+        "redacted": { "type": "boolean" },
+        "decision_verified": { "type": "boolean" },
+        "notes": { "type": "string", "maxLength": 2000 }
+      }
+    },
+    "planner_input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["trigger", "observations", "available_operations"],
+      "properties": {
+        "trigger": { "type": "string", "maxLength": 12000 },
+        "target": { "type": "string", "maxLength": 2000 },
+        "observations": { "type": "object" },
+        "knowledge": { "type": "array", "items": { "type": "object" } },
+        "available_operations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "description", "args_schema"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "description": { "type": "string" },
+              "args_schema": { "type": "object" }
+            }
+          }
+        }
+      }
+    },
+    "target": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["no_call"],
+          "properties": { "no_call": { "const": true } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["no_call", "operation", "arguments"],
+          "properties": {
+            "no_call": { "const": false },
+            "operation": { "type": "string", "minLength": 1 },
+            "arguments": { "type": "object" }
+          }
+        }
+      ]
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decision_basis", "execution_status", "evidence_ref"],
+      "properties": {
+        "decision_basis": { "type": "string", "minLength": 1, "maxLength": 4000 },
+        "execution_status": { "enum": ["not_applicable", "verified_success", "denied_by_policy", "failed", "unknown"] },
+        "fresh_read_passed": { "type": ["boolean", "null"] },
+        "evidence_ref": { "type": "string", "minLength": 1, "maxLength": 512 }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "split": { "enum": ["train", "validation", "test"] } }, "required": ["split"] },
+      "then": {
+        "properties": {
+          "provenance": {
+            "properties": { "synthetic": { "const": false }, "source_type": { "enum": ["verified_cycle", "human_authored"] } }
+          },
+          "review": {
+            "properties": {
+              "status": { "const": "accepted" },
+              "redacted": { "const": true },
+              "decision_verified": { "const": true }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "target": { "properties": { "no_call": { "const": false } }, "required": ["no_call"] } }, "required": ["target"] },
+      "then": {
+        "properties": {
+          "verification": {
+            "required": ["fresh_read_passed"],
+            "properties": {
+              "execution_status": { "const": "verified_success" },
+              "fresh_read_passed": { "const": true }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
