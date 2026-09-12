@@ -128,3 +128,13 @@ func TestJSONLAuditSinkRejectsSymlinkAndOversizedRecords(t *testing.T) {
 		t.Fatal("audit save ignored canceled context")
 	}
 }
+
+func TestJSONLAuditSinkRejectsCorruptCompleteJournalRecord(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "corrupt.jsonl")
+	if err := os.WriteFile(path, []byte("not-json\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := OpenJSONLAuditSink(path); err == nil {
+		t.Fatal("corrupt complete journal record accepted")
+	}
+}

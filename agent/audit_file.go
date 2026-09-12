@@ -58,7 +58,14 @@ func OpenJSONLAuditSink(path string) (*JSONLAuditSink, error) {
 	if err := truncateIncompleteAuditTail(file); err != nil {
 		return closeOnError(fmt.Errorf("recover audit journal: %w", err))
 	}
-	return &JSONLAuditSink{file: file}, nil
+	if err := file.Sync(); err != nil {
+		return closeOnError(fmt.Errorf("sync recovered audit journal: %w", err))
+	}
+	sink := &JSONLAuditSink{file: file}
+	if _, err := sink.Records(context.Background()); err != nil {
+		return closeOnError(fmt.Errorf("validate audit journal: %w", err))
+	}
+	return sink, nil
 }
 
 func (s *JSONLAuditSink) Close() error {
