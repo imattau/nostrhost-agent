@@ -131,16 +131,17 @@ func NewResidentRuntime(cfg RuntimeConfig) (*ResidentRuntime, error) {
 		}
 	}()
 
-	var retriever Retriever
+	var documents []KnowledgeDocument
 	if cfg.KnowledgeCorpusPath != "" {
-		documents, loadErr := LoadKnowledgeDocuments(cfg.KnowledgeCorpusPath)
+		loaded, loadErr := LoadKnowledgeDocuments(cfg.KnowledgeCorpusPath)
 		if loadErr != nil {
 			return nil, fmt.Errorf("load local knowledge corpus: %w", loadErr)
 		}
-		retriever, err = NewLocalRetriever(documents)
-		if err != nil {
-			return nil, fmt.Errorf("index local knowledge corpus: %w", err)
-		}
+		documents = loaded
+	}
+	retriever, err := NewVerifiedHistoryRetriever(documents, audit)
+	if err != nil {
+		return nil, fmt.Errorf("create verified history retriever: %w", err)
 	}
 	capabilities := make(map[Capability]bool, len(cfg.Policy.Capabilities))
 	for capability, enabled := range cfg.Policy.Capabilities {

@@ -62,6 +62,41 @@ func TestJSONLAuditSinkPersistsLatestPrivateRedactedTrace(t *testing.T) {
 	}
 }
 
+func TestJSONLAuditSinkReturnsBoundedRecentLatestSnapshots(t *testing.T) {
+	sink, err := OpenJSONLAuditSink(filepath.Join(t.TempDir(), "recent.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sink.Close()
+	started := time.Date(2026, 9, 12, 0, 0, 0, 0, time.UTC)
+	first := CycleTrace{ID: "cycle-1", StartedAt: started, Result: "running"}
+	if err := sink.Save(context.Background(), first); err != nil {
+		t.Fatal(err)
+	}
+	first.Result = "verified"
+	if err := sink.Save(context.Background(), first); err != nil {
+		t.Fatal(err)
+	}
+	second := CycleTrace{ID: "cycle-2", StartedAt: started.Add(time.Minute), Result: "observed"}
+	if err := sink.Save(context.Background(), second); err != nil {
+		t.Fatal(err)
+	}
+	recent, err := sink.RecentRecords(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recent) != 1 || recent[0].ID != "cycle-2" {
+		t.Fatalf("recent record limit was not applied: %#v", recent)
+	}
+	recent, err = sink.RecentRecords(context.Background(), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recent) != 2 || recent[0].ID != "cycle-1" || recent[0].Result != "verified" || recent[1].ID != "cycle-2" {
+		t.Fatalf("latest snapshots were not deduplicated and sorted: %#v", recent)
+	}
+}
+
 func TestJSONLAuditSinkRecoversIncompleteFinalLine(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.jsonl")
 	sink, err := OpenJSONLAuditSink(path)

@@ -38,6 +38,9 @@ lifecycle.
 - Retrieve bounded lexical matches from an operator-selected local corpus;
   load and save that corpus as a private local JSON file, and record source
   document hashes in the administration trace.
+- Retrieve relevant examples from recent audit history only when an operation
+  completed and passed its configured fresh-read verification; the live
+  journal is re-read for each cycle, and sensitive fields are redacted.
 - Require the executor to re-check authorization and validate operation
   arguments; a policy decision is not an execution credential.
 - Record observations, proposals, policy outcomes, execution results, and
@@ -58,9 +61,9 @@ authentication. Approval-gated requests are audited locally before dispatch;
 the agent waits for the daemon's correlated result after approval and
 execution. The local planner only emits typed proposals and cannot execute
 operations. The current index is rebuilt in memory from an operator-managed
-local corpus and uses lexical search; semantic embeddings and verified-history
-ingestion are subsequent increments. Operators provide service-manager
-packaging and configure operation-specific verification rules.
+local corpus and the latest positively verified operation traces, using lexical
+search. Semantic embeddings remain a subsequent increment. Operators provide
+service-manager packaging and configure operation-specific verification rules.
 
 ## Development
 

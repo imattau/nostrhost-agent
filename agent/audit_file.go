@@ -2,6 +2,7 @@ package agent
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -13,6 +14,11 @@ import (
 )
 
 const maxAuditRecordBytes = 1 << 20
+
+const (
+	maxRecentAuditRecords = 10000
+	maxRecentAuditBytes   = 32 * 1024 * 1024
+)
 
 // JSONLAuditSink appends durable snapshots to a private local journal. Each
 // Save is a checkpoint; Records returns the latest snapshot for each cycle.
@@ -159,6 +165,76 @@ func (s *JSONLAuditSink) Records(ctx context.Context) ([]CycleTrace, error) {
 	}
 	records := make([]CycleTrace, 0, len(latest))
 	for _, trace := range latest {
+		records = append(records, trace)
+	}
+	sort.Slice(records, func(i, j int) bool {
+		if records[i].StartedAt.Equal(records[j].StartedAt) {
+			return records[i].ID < records[j].ID
+		}
+		return records[i].StartedAt.Before(records[j].StartedAt)
+	})
+	return records, nil
+}
+
+// RecentRecords returns the latest snapshot for up to limit cycles by scanning
+// a bounded tail of the journal. It is intended for retrieval and other
+// bounded consumers; Records remains available for complete export.
+func (s *JSONLAuditSink) RecentRecords(ctx context.Context, limit int) ([]CycleTrace, error) {
+	if s == nil || s.file == nil {
+		return nil, errors.New("audit journal is not initialized")
+	}
+	if ctx == nil {
+		return nil, errors.New("recent audit read requires a context")
+	}
+	if limit <= 0 || limit > maxRecentAuditRecords {
+		limit = maxRecentAuditRecords
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return nil, errors.New("audit journal is closed")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	info, err := s.file.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("inspect audit journal: %w", err)
+	}
+	readSize := min(info.Size(), int64(maxRecentAuditBytes))
+	if readSize == 0 {
+		return nil, nil
+	}
+	offset := info.Size() - readSize
+	data := make([]byte, int(readSize))
+	if _, err := s.file.ReadAt(data, offset); err != nil && err != io.EOF {
+		return nil, fmt.Errorf("read recent audit history: %w", err)
+	}
+	if offset > 0 {
+		firstNewline := bytes.IndexByte(data, '\n')
+		if firstNewline < 0 {
+			return nil, nil
+		}
+		data = data[firstNewline+1:]
+	}
+	seen := make(map[string]struct{}, limit)
+	records := make([]CycleTrace, 0, limit)
+	lines := bytes.Split(data, []byte{'\n'})
+	for i := len(lines) - 1; i >= 0 && len(records) < limit; i-- {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if len(lines[i]) == 0 {
+			continue
+		}
+		var trace CycleTrace
+		if err := json.Unmarshal(lines[i], &trace); err != nil || trace.ID == "" {
+			return nil, errors.New("audit journal contains an invalid recent record")
+		}
+		if _, exists := seen[trace.ID]; exists {
+			continue
+		}
+		seen[trace.ID] = struct{}{}
 		records = append(records, trace)
 	}
 	sort.Slice(records, func(i, j int) bool {
