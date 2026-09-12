@@ -59,10 +59,12 @@ func (f *fakeApprovals) Approve(context.Context, Proposal, PolicyResult) (bool, 
 type fakeVerifier struct {
 	verified bool
 	calls    int
+	observed map[string]any
 }
 
-func (f *fakeVerifier) Verify(context.Context, map[string]any, Proposal, map[string]any) (bool, error) {
+func (f *fakeVerifier) Verify(_ context.Context, observations map[string]any, _ Proposal, _ map[string]any) (bool, error) {
 	f.calls++
+	f.observed = observations
 	return f.verified, nil
 }
 
@@ -116,6 +118,20 @@ func TestCycleRunnerExecutesOnlyAfterPolicyAndVerifies(t *testing.T) {
 	}
 	if audit.last.FinishedAt.IsZero() || audit.last.ID != "test-cycle" {
 		t.Fatalf("final trace was not persisted: %#v", audit.last)
+	}
+}
+
+func TestCycleRunnerPassesSanitizedObservationsToVerifier(t *testing.T) {
+	planner := &fakePlanner{proposals: []Proposal{{Operation: "service.restart", Args: map[string]any{"name": "web"}}}}
+	verifier := &fakeVerifier{verified: true}
+	runner := testRunner(Maintain, ServiceRestart, planner, &fakeExecutor{}, &fakeAudit{})
+	runner.Observer = fakeObserver{value: map[string]any{"status": "failed", "api_token": "secret"}}
+	runner.Verifier = verifier
+	if _, err := runner.Run(context.Background(), CycleRequest{Trigger: "health_check_failed"}); err != nil {
+		t.Fatal(err)
+	}
+	if verifier.observed["api_token"] != redactedValue {
+		t.Fatalf("verifier received unsanitized observations: %#v", verifier.observed)
 	}
 }
 

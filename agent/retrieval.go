@@ -24,9 +24,9 @@ var knowledgeTokenPattern = regexp.MustCompile(`[\pL\pN]+`)
 // KnowledgeDocument is an operator-selected local reference or verified
 // operational record. Callers should exclude secrets and unverified outcomes.
 type KnowledgeDocument struct {
-	ID     string
-	Source string
-	Text   string
+	ID     string `json:"id"`
+	Source string `json:"source"`
+	Text   string `json:"text"`
 }
 
 // KnowledgeMatch carries bounded untrusted text for the planner and a stable

@@ -247,7 +247,7 @@ func (r CycleRunner) Run(ctx context.Context, request CycleRequest) (CycleTrace,
 			}
 			continue
 		}
-		verified, verifyErr := r.Verifier.Verify(ctx, observations, proposal, operationResult)
+		verified, verifyErr := r.Verifier.Verify(ctx, trace.Observations, proposal, operationResult)
 		if verifyErr != nil {
 			trace.Proposals[index].Outcome = "verification_failed"
 		} else if verified {
