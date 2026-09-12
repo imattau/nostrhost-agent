@@ -15,6 +15,7 @@ const maxRuntimeConfigBytes = 256 * 1024
 type RuntimeFileConfig struct {
 	Relay               RelayFileConfig     `json:"relay"`
 	Inference           InferenceFileConfig `json:"inference,omitempty"`
+	Embeddings          EmbeddingFileConfig `json:"embeddings,omitempty"`
 	Policy              Policy              `json:"policy"`
 	ObservationQueries  []ObservationQuery  `json:"observation_queries"`
 	VerificationRules   []VerificationRule  `json:"verification_rules,omitempty"`
@@ -39,6 +40,12 @@ type InferenceFileConfig struct {
 	Model    string `json:"model"`
 	APIKey   string `json:"api_key,omitempty"`
 	MaxBytes int64  `json:"max_bytes,omitempty"`
+}
+
+type EmbeddingFileConfig struct {
+	BaseURL string `json:"base_url"`
+	Model   string `json:"model"`
+	APIKey  string `json:"api_key,omitempty"`
 }
 
 // LoadRuntimeConfig reads strict JSON configuration from a regular file that
@@ -96,13 +103,20 @@ func LoadRuntimeConfig(path string) (RuntimeConfig, error) {
 			APIKey: config.Inference.APIKey, MaxBytes: config.Inference.MaxBytes,
 		}
 	}
+	if (config.Embeddings.BaseURL != "" || config.Embeddings.Model != "" || config.Embeddings.APIKey != "") &&
+		(config.Embeddings.BaseURL == "" || config.Embeddings.Model == "") {
+		return RuntimeConfig{}, errors.New("embeddings.base_url and embeddings.model must both be set when semantic embeddings are enabled")
+	}
+	embeddings := EmbeddingConfig{
+		BaseURL: config.Embeddings.BaseURL, Model: config.Embeddings.Model, APIKey: config.Embeddings.APIKey,
+	}
 	return RuntimeConfig{
 		Relay: RelayTransportConfig{
 			RelayURL: config.Relay.RelayURL, AgentSecretKey: config.Relay.AgentSecretKey,
 			TrustedServerKey: config.Relay.TrustedServerKey, TargetPubkey: config.Relay.TargetPubkey,
 			ResultTimeout: resultTimeout,
 		},
-		Inference: inference, Policy: config.Policy,
+		Inference: inference, Embeddings: embeddings, Policy: config.Policy,
 		ObservationQueries: config.ObservationQueries, VerificationRules: config.VerificationRules,
 		KnowledgeCorpusPath: config.KnowledgeCorpusPath, AuditPath: config.AuditPath,
 		Interval: interval, RunImmediately: config.RunImmediately,

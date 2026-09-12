@@ -20,7 +20,8 @@ const validRuntimeConfigJSON = `{
   "audit_path": "/var/lib/nostrhost-agent/audit.jsonl",
 	"interval": "6h",
 	"listen_for_events": true,
-	"event_lookback": "15m"
+	"event_lookback": "15m",
+	"embeddings": {"base_url": "http://127.0.0.1:8081/v1", "model": "local-embed"}
 }`
 
 func writeRuntimeConfig(t *testing.T, body string, mode os.FileMode) string {
@@ -41,7 +42,7 @@ func TestLoadRuntimeConfigParsesPrivateFileAndDurations(t *testing.T) {
 	if config.Interval != 6*time.Hour || config.Relay.ResultTimeout != 90*time.Second || config.EventLookback != 15*time.Minute {
 		t.Fatalf("runtime durations were not parsed: interval=%s timeout=%s lookback=%s", config.Interval, config.Relay.ResultTimeout, config.EventLookback)
 	}
-	if config.Policy.Level != Observe || len(config.ObservationQueries) != 1 || config.Inference.Model != "" || !config.ListenForEvents {
+	if config.Policy.Level != Observe || len(config.ObservationQueries) != 1 || config.Inference.Model != "" || !config.ListenForEvents || config.Embeddings.Model != "local-embed" {
 		t.Fatalf("unexpected observe-mode configuration: %#v", config)
 	}
 }
@@ -85,6 +86,10 @@ func TestLoadRuntimeConfigRejectsInvalidOrOversizedDurationsAndFiles(t *testing.
 	negativeTimeout := strings.Replace(validRuntimeConfigJSON, `"90s"`, `"-1s"`, 1)
 	if _, err := LoadRuntimeConfig(writeRuntimeConfig(t, negativeTimeout, 0o600)); err == nil {
 		t.Fatal("negative relay timeout accepted")
+	}
+	partialEmbeddings := strings.Replace(validRuntimeConfigJSON, `"base_url": "http://127.0.0.1:8081/v1", `, "", 1)
+	if _, err := LoadRuntimeConfig(writeRuntimeConfig(t, partialEmbeddings, 0o600)); err == nil {
+		t.Fatal("incomplete semantic embedding configuration accepted")
 	}
 	if _, err := LoadRuntimeConfig(writeRuntimeConfig(t, strings.Repeat("x", maxRuntimeConfigBytes+1), 0o600)); err == nil {
 		t.Fatal("oversized config accepted")

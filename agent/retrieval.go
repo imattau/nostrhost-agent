@@ -105,14 +105,20 @@ func NewLocalRetriever(documents []KnowledgeDocument) (*LocalRetriever, error) {
 }
 
 func (r *LocalRetriever) Retrieve(ctx context.Context, query string, limit int) ([]KnowledgeMatch, error) {
+	return r.retrieve(ctx, query, limit, maxKnowledgeResults)
+}
+
+func (r *LocalRetriever) retrieve(ctx context.Context, query string, limit, maxLimit int) ([]KnowledgeMatch, error) {
 	if r == nil || len(r.documents) == 0 {
 		return nil, errors.New("local retriever is not initialized")
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if limit <= 0 || limit > maxKnowledgeResults {
+	if limit <= 0 {
 		limit = maxKnowledgeResults
+	} else if limit > maxLimit {
+		limit = maxLimit
 	}
 	queryTerms := termCounts(query)
 	if len(queryTerms) == 0 {

@@ -61,8 +61,24 @@ authentication. Approval-gated requests are audited locally before dispatch;
 the agent waits for the daemon's correlated result after approval and
 execution. The local planner only emits typed proposals and cannot execute
 operations. The current index is rebuilt in memory from an operator-managed
-local corpus and the latest positively verified operation traces, using lexical
-search. Semantic embeddings remain a subsequent increment. Operators provide
+local corpus and the latest positively verified operation traces, using
+lexical search by default. Assist, maintain, and autonomous modes may also use
+a separate local OpenAI-compatible embeddings endpoint for semantic ranking;
+the lexical ranking remains the fallback if that endpoint is unavailable. The
+semantic pass considers at most 512 documents per cycle and caches their
+vectors in memory. Embedding failures fall back to lexical ranking with
+exponential retry backoff. Configure the optional settings like this:
+
+```json
+"embeddings": {
+  "base_url": "http://127.0.0.1:8081/v1",
+  "model": "local-embedding-model"
+}
+```
+
+For llama.cpp, use a dedicated embedding model with embedding mode and a
+non-`none` pooling type, then point these settings at its loopback server.
+Operators provide
 service-manager packaging and configure operation-specific verification rules.
 
 ## Development

@@ -11,6 +11,7 @@ import (
 type RuntimeConfig struct {
 	Relay               RelayTransportConfig
 	Inference           LLMPlannerConfig
+	Embeddings          EmbeddingConfig
 	Registry            map[string]OperationSpec
 	Policy              Policy
 	ObservationQueries  []ObservationQuery
@@ -113,6 +114,14 @@ func NewResidentRuntime(cfg RuntimeConfig) (*ResidentRuntime, error) {
 			return nil, fmt.Errorf("create local planner: %w", err)
 		}
 	}
+	var embedder Embedder
+	if cfg.Embeddings.BaseURL != "" || cfg.Embeddings.Model != "" || cfg.Embeddings.APIKey != "" {
+		localEmbedder, embedErr := NewOpenAICompatibleEmbedder(cfg.Embeddings)
+		if embedErr != nil {
+			return nil, fmt.Errorf("create local semantic embedder: %w", embedErr)
+		}
+		embedder = localEmbedder
+	}
 	verifier := cfg.Verifier
 	if verifier == nil && autonomyRank[cfg.Policy.Level] >= autonomyRank[Maintain] {
 		verifier, err = NewNostrOperationVerifier(executor, registry, cfg.VerificationRules)
@@ -139,7 +148,7 @@ func NewResidentRuntime(cfg RuntimeConfig) (*ResidentRuntime, error) {
 		}
 		documents = loaded
 	}
-	retriever, err := NewVerifiedHistoryRetriever(documents, audit)
+	retriever, err := NewVerifiedHistoryRetriever(documents, audit, embedder)
 	if err != nil {
 		return nil, fmt.Errorf("create verified history retriever: %w", err)
 	}
