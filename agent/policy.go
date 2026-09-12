@@ -63,10 +63,11 @@ type Proposal struct {
 type Decision string
 
 const (
-	DecisionObserveOnly Decision = "observe_only"
-	DecisionApproval    Decision = "approval_required"
-	DecisionAllow       Decision = "allow"
-	DecisionDeny        Decision = "deny"
+	DecisionObserveOnly  Decision = "observe_only"
+	DecisionProposalOnly Decision = "proposal_only"
+	DecisionApproval     Decision = "approval_required"
+	DecisionAllow        Decision = "allow"
+	DecisionDeny         Decision = "deny"
 )
 
 type Policy struct {
@@ -98,6 +99,9 @@ func (p Policy) Evaluate(spec OperationSpec) PolicyResult {
 	}
 	if p.Level == Observe {
 		return PolicyResult{Decision: DecisionObserveOnly, Reason: "observe mode never executes proposals"}
+	}
+	if p.Level == Assist {
+		return PolicyResult{Decision: DecisionProposalOnly, Reason: "assist mode proposes plans but never executes them"}
 	}
 	if spec.Risk >= RiskDestructive || spec.RequiresApproval {
 		return PolicyResult{Decision: DecisionApproval, Reason: "operation requires owner approval"}

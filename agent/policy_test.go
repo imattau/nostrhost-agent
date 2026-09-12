@@ -25,8 +25,8 @@ func TestPolicyAutonomyModesAndUnknownOperations(t *testing.T) {
 		t.Fatalf("observe decision = %q, want observe_only", got)
 	}
 	policy.Level = Assist
-	if got := EvaluateProposal(policy, registry, Proposal{Operation: "app.health"}).Decision; got != DecisionApproval {
-		t.Fatalf("assist decision = %q, want approval_required", got)
+	if got := EvaluateProposal(policy, registry, Proposal{Operation: "app.health"}).Decision; got != DecisionProposalOnly {
+		t.Fatalf("assist decision = %q, want proposal_only", got)
 	}
 	if got := EvaluateProposal(policy, registry, Proposal{Operation: "shell.exec"}).Decision; got != DecisionDeny {
 		t.Fatalf("unknown operation decision = %q, want deny", got)
