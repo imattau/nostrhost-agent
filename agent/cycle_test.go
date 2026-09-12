@@ -129,6 +129,21 @@ func TestCycleRunnerExecutesOnlyAfterPolicyAndVerifies(t *testing.T) {
 	if audit.last.FinishedAt.IsZero() || audit.last.ID != "test-cycle" {
 		t.Fatalf("final trace was not persisted: %#v", audit.last)
 	}
+	if !trace.PlanningCompleted || len(trace.AvailableOperations) != 1 || trace.AvailableOperations[0].Name != "service.restart" {
+		t.Fatalf("trace did not retain the planner decision context: %#v", trace)
+	}
+}
+
+func TestCycleRunnerRecordsCompletedPlannerNoCall(t *testing.T) {
+	planner := &fakePlanner{}
+	runner := testRunner(Assist, HealthRead, planner, &fakeExecutor{}, &fakeAudit{})
+	trace, err := runner.Run(context.Background(), CycleRequest{Trigger: "scheduled"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !trace.PlanningCompleted || len(trace.Proposals) != 0 || len(trace.AvailableOperations) == 0 {
+		t.Fatalf("completed no-call decision not distinguishable from skipped planning: %#v", trace)
+	}
 }
 
 func TestCycleRunnerPassesSanitizedObservationsToVerifier(t *testing.T) {

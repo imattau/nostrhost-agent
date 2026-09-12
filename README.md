@@ -81,11 +81,39 @@ non-`none` pooling type, then point these settings at its loopback server.
 Operators provide
 service-manager packaging and configure operation-specific verification rules.
 
+## Offline community contribution review
+
+Operators can prepare one explicitly selected, completed planner cycle as a
+local review candidate. The exporter reads the audit journal read-only, keeps
+the exact model-visible operation schemas, applies conservative redaction, and
+writes a new mode-`0600` JSON file. It has no upload command, network client, or
+training credentials. The candidate is not a training example: the model's
+proposal is labeled as observed behavior and `expected_decision` remains null
+until a human reviewer supplies an independently supported label.
+
+```sh
+go run ./cmd/nostrhost-agent-export \
+  --journal /var/lib/nostrhost-agent/audit.jsonl \
+  --cycle-id CYCLE_ID \
+  --output ./review-candidate.json
+```
+
+Review the candidate locally before sharing it. Redaction is best-effort and
+cannot guarantee that a host-specific identifier or sensitive detail was
+removed; edit or discard the file if anything looks identifying. The exporter
+refuses insecure journal permissions, symlinks, incomplete/corrupt journals,
+unfinalized cycles, and existing output paths. Only after review should a
+maintainer convert a candidate to the versioned training trace format in
+[`training/trace.schema.json`](training/trace.schema.json), assign provenance
+and split, and accept it into a dataset. Community collection is opt-in and
+offline by default; no operator data is automatically sent to the project.
+
 ## Development
 
 ```sh
 go test ./...
 go build ./cmd/nostrhost-agent
+go build ./cmd/nostrhost-agent-export
 ```
 
 Run the deterministic recovery and safety evaluation with

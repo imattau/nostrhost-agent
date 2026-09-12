@@ -156,12 +156,18 @@ func (r CycleRunner) Run(ctx context.Context, request CycleRequest) (CycleTrace,
 			return trace, fmt.Errorf("persist retrieval citations: %w", err)
 		}
 	}
+	operations := r.availableOperations()
+	trace.AvailableOperations = snapshotOperations(operations)
 	proposals, err := r.Planner.Plan(ctx, PlanningInput{
 		Trigger: request.Trigger, Target: request.Target, Observations: trace.Observations,
-		Knowledge: knowledge, Operations: r.availableOperations(),
+		Knowledge: knowledge, Operations: operations,
 	})
 	if err != nil {
 		return r.finish(ctx, trace, now, "planning_failed", "planner could not produce a plan", err)
+	}
+	trace.PlanningCompleted = true
+	if err := r.save(ctx, trace); err != nil {
+		return trace, fmt.Errorf("persist completed planner decision: %w", err)
 	}
 	limit := r.MaxProposals
 	if limit <= 0 {
@@ -348,6 +354,17 @@ func sortedCapabilities(capabilities map[Capability]bool) []Capability {
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i] < result[j] })
 	return result
+}
+
+func snapshotOperations(operations []OperationSpec) []OperationSnapshot {
+	snapshots := make([]OperationSnapshot, 0, len(operations))
+	for _, operation := range operations {
+		snapshots = append(snapshots, OperationSnapshot{
+			Name: operation.Name, Description: operation.Description,
+			ArgsSchema: json.RawMessage(operation.ArgsSchema),
+		})
+	}
+	return snapshots
 }
 
 func randomID() (string, error) {
