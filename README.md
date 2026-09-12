@@ -23,6 +23,8 @@ agent-side effects are behind typed interfaces.
 - Publish signed kind-2200 operation requests to the local relay and accept
   only correlated, signature-verified kind-2204 results from the configured
   server identity.
+- Retrieve bounded lexical matches from an operator-selected local corpus;
+  record the source document hashes in the administration trace.
 - Require the executor to re-check authorization and validate operation
   arguments; a policy decision is not an execution credential.
 - Record observations, proposals, policy outcomes, execution results, and
@@ -39,8 +41,9 @@ re-reads current health, and an approval gate that checks signed owner approval.
 The relay adapter only allows loopback relay URLs and uses the agent identity
 for NIP-42 authentication; NostrHost's operation daemon remains authoritative
 for per-operation authorization and execution. The local planner only emits
-typed proposals and cannot execute operations. Retrieval and the resident
-service lifecycle are subsequent increments.
+typed proposals and cannot execute operations. A persistent index, semantic
+embeddings, verified-history ingestion, and the resident service lifecycle are
+subsequent increments; the current retrieval index is in-memory lexical search.
 
 ## Development
 

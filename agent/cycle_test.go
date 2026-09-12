@@ -136,6 +136,29 @@ func TestCycleRunnerAssistNeverExecutes(t *testing.T) {
 	}
 }
 
+func TestCycleRunnerInjectsRetrievedKnowledgeAndAuditsCitation(t *testing.T) {
+	planner := &fakePlanner{proposals: []Proposal{{Operation: "app.health", Args: map[string]any{"app": "photos"}}}}
+	audit := &fakeAudit{}
+	retriever, err := NewLocalRetriever([]KnowledgeDocument{{
+		ID: "incident-17", Source: "verified-trace", Text: "A failed photo service recovered after checking its database dependency.",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := testRunner(Assist, HealthRead, planner, &fakeExecutor{}, audit)
+	runner.Retriever = retriever
+	trace, err := runner.Run(context.Background(), CycleRequest{Trigger: "photo service unhealthy", Target: "photos"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(planner.input.Knowledge) != 1 || planner.input.Knowledge[0].ID != "incident-17" {
+		t.Fatalf("planner did not receive local context: %#v", planner.input.Knowledge)
+	}
+	if len(trace.Knowledge) != 1 || trace.Knowledge[0].Hash != planner.input.Knowledge[0].Hash {
+		t.Fatalf("trace did not record retrieved source version: %#v", trace.Knowledge)
+	}
+}
+
 func TestCycleRunnerRequiresApprovalForDestructiveOperation(t *testing.T) {
 	planner := &fakePlanner{proposals: []Proposal{{Operation: "app.restore", Args: map[string]any{"app": "photos", "snapshot": "snapshot-1"}}}}
 	executor := &fakeExecutor{}

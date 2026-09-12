@@ -6,16 +6,17 @@ import "time"
 // Plan → Execute → Verify cycle. Callers should persist a copy before and
 // after execution so a process crash does not erase proposed work.
 type CycleTrace struct {
-	ID           string           `json:"id"`
-	StartedAt    time.Time        `json:"started_at"`
-	FinishedAt   time.Time        `json:"finished_at,omitempty"`
-	Trigger      string           `json:"trigger"`
-	Target       string           `json:"target,omitempty"`
-	Observations map[string]any   `json:"observations,omitempty"`
-	Capabilities []Capability     `json:"capabilities,omitempty"`
-	Proposals    []ProposalRecord `json:"proposals,omitempty"`
-	Result       string           `json:"result"`
-	Resolution   string           `json:"resolution,omitempty"`
+	ID           string              `json:"id"`
+	StartedAt    time.Time           `json:"started_at"`
+	FinishedAt   time.Time           `json:"finished_at,omitempty"`
+	Trigger      string              `json:"trigger"`
+	Target       string              `json:"target,omitempty"`
+	Observations map[string]any      `json:"observations,omitempty"`
+	Capabilities []Capability        `json:"capabilities,omitempty"`
+	Knowledge    []KnowledgeCitation `json:"knowledge,omitempty"`
+	Proposals    []ProposalRecord    `json:"proposals,omitempty"`
+	Result       string              `json:"result"`
+	Resolution   string              `json:"resolution,omitempty"`
 }
 
 type ProposalRecord struct {

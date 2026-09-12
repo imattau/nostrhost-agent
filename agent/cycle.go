@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -30,6 +31,7 @@ type PlanningInput struct {
 	Trigger      string
 	Target       string
 	Observations map[string]any
+	Knowledge    []KnowledgeMatch
 	Operations   []OperationSpec
 }
 
@@ -67,6 +69,7 @@ type CycleRunner struct {
 	Registry     map[string]OperationSpec
 	Observer     Observer
 	Planner      Planner
+	Retriever    Retriever
 	Executor     OperationExecutor
 	Approvals    ApprovalGate
 	Verifier     Verifier
@@ -121,9 +124,32 @@ func (r CycleRunner) Run(ctx context.Context, request CycleRequest) (CycleTrace,
 	if r.Executor == nil && (r.Policy.Level == Maintain || r.Policy.Level == Autonomous) {
 		return r.finish(ctx, trace, now, "executor_unavailable", "no operation executor is configured", errors.New("executor is required for execution modes"))
 	}
+	var knowledge []KnowledgeMatch
+	if r.Retriever != nil {
+		query, marshalErr := json.Marshal(struct {
+			Trigger      string         `json:"trigger"`
+			Target       string         `json:"target,omitempty"`
+			Observations map[string]any `json:"observations"`
+		}{request.Trigger, request.Target, trace.Observations})
+		if marshalErr != nil {
+			return r.finish(ctx, trace, now, "retrieval_failed", "could not construct a local retrieval query", marshalErr)
+		}
+		knowledge, err = r.Retriever.Retrieve(ctx, string(query), maxKnowledgeResults)
+		if err != nil {
+			return r.finish(ctx, trace, now, "retrieval_failed", "could not retrieve local operating context", err)
+		}
+		for _, match := range knowledge {
+			trace.Knowledge = append(trace.Knowledge, KnowledgeCitation{
+				ID: match.ID, Source: match.Source, Hash: match.Hash, Score: match.Score,
+			})
+		}
+		if err := r.save(ctx, trace); err != nil {
+			return trace, fmt.Errorf("persist retrieval citations: %w", err)
+		}
+	}
 	proposals, err := r.Planner.Plan(ctx, PlanningInput{
 		Trigger: request.Trigger, Target: request.Target, Observations: trace.Observations,
-		Operations: r.availableOperations(),
+		Knowledge: knowledge, Operations: r.availableOperations(),
 	})
 	if err != nil {
 		return r.finish(ctx, trace, now, "planning_failed", "planner could not produce a plan", err)
