@@ -11,6 +11,8 @@ planner and the NostrHost operation executor can share.
 ## Initial scope
 
 - Describe operations using stable names and required capabilities.
+- Publish strict JSON argument schemas and reject missing, mistyped, or
+  unknown arguments before requesting approval or dispatching an operation.
 - Evaluate proposals under `observe`, `assist`, `maintain`, or `autonomous`
   autonomy levels.
 - Run a bounded Observe → Diagnose → Plan → Execute → Verify cycle through

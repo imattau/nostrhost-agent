@@ -51,6 +51,7 @@ type OperationSpec struct {
 	RequiresApproval bool
 	ArgsSchema       string
 	SensitiveArgs    []string
+	validateArgs     ArgumentValidator
 }
 
 // Proposal is a model-authored request to invoke a registered operation.
@@ -120,23 +121,33 @@ func (p Policy) Evaluate(spec OperationSpec) PolicyResult {
 	return PolicyResult{Decision: DecisionAllow, Reason: "capability and maintenance policy permit execution"}
 }
 
+// ValidateArgs enforces the host-owned argument schema before any approval
+// request or executor call. The executor must still decode into its typed
+// operation arguments and apply its own validation.
+func (s OperationSpec) ValidateArgs(args map[string]any) error {
+	if s.validateArgs == nil {
+		return fmt.Errorf("operation %q has no argument validator", s.Name)
+	}
+	return s.validateArgs(args)
+}
+
 // DefaultRegistry is intentionally small and conservative. Operation names
 // are stable API identifiers; no operation accepts arbitrary commands.
 func DefaultRegistry() map[string]OperationSpec {
 	specs := []OperationSpec{
-		{Name: "system.health", Capability: HealthRead, Risk: RiskRead, AutonomousAt: Maintain},
-		{Name: "service.status", Capability: SystemRead, Risk: RiskRead, AutonomousAt: Maintain},
-		{Name: "app.health", Capability: HealthRead, Risk: RiskRead, AutonomousAt: Maintain},
-		{Name: "app.logs", Capability: LogsRead, Risk: RiskRead, AutonomousAt: Maintain},
-		{Name: "disk.status", Capability: SystemRead, Risk: RiskRead, AutonomousAt: Maintain},
-		{Name: "diagnosis.run", Capability: DiagnosisRun, Risk: RiskLow, AutonomousAt: Maintain},
-		{Name: "backup.create", Capability: BackupCreate, Risk: RiskLow, AutonomousAt: Maintain},
-		{Name: "service.restart", Capability: ServiceRestart, Risk: RiskLow, AutonomousAt: Maintain},
-		{Name: "state.diff", Capability: StateDiff, Risk: RiskRead, AutonomousAt: Maintain},
-		{Name: "package.updates", Capability: SystemRead, Risk: RiskRead, AutonomousAt: Maintain},
-		{Name: "package.upgrade", Capability: PackageUpdate, Risk: RiskElevated, AutonomousAt: Autonomous, RequiresApproval: true},
-		{Name: "app.restore", Capability: AppRestore, Risk: RiskDestructive, AutonomousAt: Autonomous, RequiresApproval: true},
-		{Name: "firewall.change", Capability: FirewallWrite, Risk: RiskDestructive, AutonomousAt: Autonomous, RequiresApproval: true},
+		definedOperation(OperationSpec{Name: "system.health", Capability: HealthRead, Risk: RiskRead, AutonomousAt: Maintain}, nil, nil),
+		definedOperation(OperationSpec{Name: "service.status", Capability: SystemRead, Risk: RiskRead, AutonomousAt: Maintain}, nil, map[string]string{"name": "string"}),
+		definedOperation(OperationSpec{Name: "app.health", Capability: HealthRead, Risk: RiskRead, AutonomousAt: Maintain}, map[string]string{"app": "string"}, nil),
+		definedOperation(OperationSpec{Name: "app.logs", Capability: LogsRead, Risk: RiskRead, AutonomousAt: Maintain}, map[string]string{"app": "string"}, map[string]string{"lines": "integer"}),
+		definedOperation(OperationSpec{Name: "disk.status", Capability: SystemRead, Risk: RiskRead, AutonomousAt: Maintain}, nil, nil),
+		definedOperation(OperationSpec{Name: "diagnosis.run", Capability: DiagnosisRun, Risk: RiskLow, AutonomousAt: Maintain}, nil, map[string]string{"target": "string"}),
+		definedOperation(OperationSpec{Name: "backup.create", Capability: BackupCreate, Risk: RiskLow, AutonomousAt: Maintain}, nil, map[string]string{"app": "string"}),
+		definedOperation(OperationSpec{Name: "service.restart", Capability: ServiceRestart, Risk: RiskLow, AutonomousAt: Maintain}, map[string]string{"name": "string"}, nil),
+		definedOperation(OperationSpec{Name: "state.diff", Capability: StateDiff, Risk: RiskRead, AutonomousAt: Maintain}, nil, nil),
+		definedOperation(OperationSpec{Name: "package.updates", Capability: SystemRead, Risk: RiskRead, AutonomousAt: Maintain}, nil, nil),
+		definedOperation(OperationSpec{Name: "package.upgrade", Capability: PackageUpdate, Risk: RiskElevated, AutonomousAt: Autonomous, RequiresApproval: true}, map[string]string{"app": "string"}, nil),
+		definedOperation(OperationSpec{Name: "app.restore", Capability: AppRestore, Risk: RiskDestructive, AutonomousAt: Autonomous, RequiresApproval: true}, map[string]string{"app": "string", "snapshot": "string"}, nil),
+		definedOperation(OperationSpec{Name: "firewall.change", Capability: FirewallWrite, Risk: RiskDestructive, AutonomousAt: Autonomous, RequiresApproval: true}, map[string]string{"action": "string", "port": "integer"}, map[string]string{"protocol": "string"}),
 	}
 	registry := make(map[string]OperationSpec, len(specs))
 	for _, spec := range specs {

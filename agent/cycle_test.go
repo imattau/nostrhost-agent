@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"testing"
@@ -118,7 +119,7 @@ func TestCycleRunnerExecutesOnlyAfterPolicyAndVerifies(t *testing.T) {
 }
 
 func TestCycleRunnerAssistNeverExecutes(t *testing.T) {
-	planner := &fakePlanner{proposals: []Proposal{{Operation: "app.health"}}}
+	planner := &fakePlanner{proposals: []Proposal{{Operation: "app.health", Args: map[string]any{"app": "photos"}}}}
 	executor := &fakeExecutor{}
 	trace, err := testRunner(Assist, HealthRead, planner, executor, &fakeAudit{}).Run(context.Background(), CycleRequest{Trigger: "scheduled"})
 	if err != nil {
@@ -130,7 +131,7 @@ func TestCycleRunnerAssistNeverExecutes(t *testing.T) {
 }
 
 func TestCycleRunnerRequiresApprovalForDestructiveOperation(t *testing.T) {
-	planner := &fakePlanner{proposals: []Proposal{{Operation: "app.restore"}}}
+	planner := &fakePlanner{proposals: []Proposal{{Operation: "app.restore", Args: map[string]any{"app": "photos", "snapshot": "snapshot-1"}}}}
 	executor := &fakeExecutor{}
 	approvals := &fakeApprovals{approved: false}
 	runner := testRunner(Autonomous, AppRestore, planner, executor, &fakeAudit{})
@@ -145,7 +146,7 @@ func TestCycleRunnerRequiresApprovalForDestructiveOperation(t *testing.T) {
 }
 
 func TestCycleRunnerPersistsApprovalRequestBeforeExecution(t *testing.T) {
-	planner := &fakePlanner{proposals: []Proposal{{Operation: "app.restore"}}}
+	planner := &fakePlanner{proposals: []Proposal{{Operation: "app.restore", Args: map[string]any{"app": "photos", "snapshot": "snapshot-1"}}}}
 	executor := &fakeExecutor{}
 	verifier := &fakeVerifier{verified: true}
 	audit := &fakeAudit{}
@@ -193,7 +194,10 @@ func TestCycleRunnerObserveDoesNotInvokePlanner(t *testing.T) {
 }
 
 func TestCycleRunnerTruncatesExcessPlannerOutput(t *testing.T) {
-	planner := &fakePlanner{proposals: []Proposal{{Operation: "app.health"}, {Operation: "app.health"}}}
+	planner := &fakePlanner{proposals: []Proposal{
+		{Operation: "app.health", Args: map[string]any{"app": "photos"}},
+		{Operation: "app.health", Args: map[string]any{"app": "photos"}},
+	}}
 	runner := testRunner(Assist, HealthRead, planner, &fakeExecutor{}, &fakeAudit{})
 	runner.MaxProposals = 1
 	trace, err := runner.Run(context.Background(), CycleRequest{Trigger: "scheduled"})
@@ -202,6 +206,39 @@ func TestCycleRunnerTruncatesExcessPlannerOutput(t *testing.T) {
 	}
 	if len(trace.Proposals) != 1 || trace.Result != "proposal_limit_reached" {
 		t.Fatalf("proposal limit not enforced: %#v", trace)
+	}
+}
+
+func TestCycleRunnerRejectsInvalidArgsBeforeApprovalOrExecution(t *testing.T) {
+	planner := &fakePlanner{proposals: []Proposal{{Operation: "service.restart", Args: map[string]any{"name": "web", "command": "rm -rf /"}}}}
+	executor := &fakeExecutor{}
+	approvals := &fakeApprovals{approved: true}
+	runner := testRunner(Autonomous, ServiceRestart, planner, executor, &fakeAudit{})
+	runner.Approvals = approvals
+	trace, err := runner.Run(context.Background(), CycleRequest{Trigger: "health_check_failed"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if executor.calls != 0 || approvals.calls != 0 || trace.Proposals[0].Outcome != "invalid_arguments" || trace.Proposals[0].Proposal.Args != nil {
+		t.Fatalf("invalid arguments crossed the operation boundary: approvals=%d executor=%d trace=%#v", approvals.calls, executor.calls, trace)
+	}
+}
+
+func TestDefaultRegistryPublishesAndEnforcesSchemas(t *testing.T) {
+	registry := DefaultRegistry()
+	for name, spec := range registry {
+		if !json.Valid([]byte(spec.ArgsSchema)) {
+			t.Errorf("%s has invalid JSON schema %q", name, spec.ArgsSchema)
+		}
+		if err := spec.ValidateArgs(map[string]any{}); err != nil && name == "system.health" {
+			t.Errorf("empty-argument read operation rejected: %v", err)
+		}
+	}
+	if err := registry["service.restart"].ValidateArgs(map[string]any{"name": "nginx"}); err != nil {
+		t.Fatalf("valid service restart args rejected: %v", err)
+	}
+	if err := registry["service.restart"].ValidateArgs(map[string]any{"name": "nginx", "shell": "true"}); err == nil {
+		t.Fatal("unknown service restart argument accepted")
 	}
 }
 

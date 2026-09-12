@@ -139,7 +139,17 @@ func (r CycleRunner) Run(ctx context.Context, request CycleRequest) (CycleTrace,
 		}
 		result := EvaluateProposal(r.Policy, r.Registry, proposal)
 		spec, registered := r.Registry[proposal.Operation]
-		record := ProposalRecord{Proposal: safeProposal(proposal, spec, registered), Policy: result, Outcome: string(result.Decision)}
+		outcome := string(result.Decision)
+		if registered && result.Decision != DecisionDeny {
+			if err := spec.ValidateArgs(proposal.Args); err != nil {
+				result = PolicyResult{Decision: DecisionDeny, Reason: "arguments do not match the registered operation schema"}
+				outcome = "invalid_arguments"
+			}
+		}
+		record := ProposalRecord{Proposal: safeProposal(proposal, spec, registered), Policy: result, Outcome: outcome}
+		if outcome == "invalid_arguments" {
+			record.Proposal.Args = nil
+		}
 		trace.Proposals = append(trace.Proposals, record)
 		index := len(trace.Proposals) - 1
 		if err := r.save(ctx, trace); err != nil {
@@ -223,7 +233,7 @@ func (r CycleRunner) Run(ctx context.Context, request CycleRequest) (CycleTrace,
 		switch record.Outcome {
 		case "verified":
 			verifiedAny = true
-		case "execution_failed", "verification_failed", "not_verified", "verification_unavailable", "executor_unavailable":
+		case "invalid_arguments", "execution_failed", "verification_failed", "not_verified", "verification_unavailable", "executor_unavailable":
 			needsAttention = true
 		case "approval_unavailable", "approval_check_failed":
 			approvalRequired = true
