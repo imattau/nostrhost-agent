@@ -21,7 +21,7 @@
     "schema_version": { "const": 1 },
     "id": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{2,127}$" },
     "incident_family": { "type": "string", "minLength": 1, "maxLength": 160 },
-    "split": { "enum": ["train", "validation", "test", "excluded"] },
+    "split": { "enum": ["train", "validation", "test", "lab_train", "lab_validation", "lab_test", "excluded"] },
     "category": {
       "enum": [
         "healthy_noop",
@@ -38,7 +38,7 @@
       "additionalProperties": false,
       "required": ["source_type", "source_ref", "collected_at", "synthetic"],
       "properties": {
-        "source_type": { "enum": ["verified_cycle", "human_authored", "synthetic", "model_candidate"] },
+        "source_type": { "enum": ["verified_cycle", "human_authored", "vm_lab_simulation", "synthetic", "model_candidate"] },
         "source_ref": { "type": "string", "minLength": 1, "maxLength": 512 },
         "collected_at": { "type": "string", "format": "date-time" },
         "synthetic": { "type": "boolean" },
@@ -121,6 +121,23 @@
         "properties": {
           "provenance": {
             "properties": { "synthetic": { "const": false }, "source_type": { "enum": ["verified_cycle", "human_authored"] } }
+          },
+          "review": {
+            "properties": {
+              "status": { "const": "accepted" },
+              "redacted": { "const": true },
+              "decision_verified": { "const": true }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "split": { "enum": ["lab_train", "lab_validation", "lab_test"] } }, "required": ["split"] },
+      "then": {
+        "properties": {
+          "provenance": {
+            "properties": { "synthetic": { "const": true }, "source_type": { "const": "vm_lab_simulation" } }
           },
           "review": {
             "properties": {

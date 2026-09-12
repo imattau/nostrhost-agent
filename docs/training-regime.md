@@ -2,7 +2,7 @@
 
 ## Decision
 
-Start with supervised fine-tuning of Qwen3.5-0.8B-Instruct using a LoRA adapter. Do not train yet: the current evaluation set has only 17 synthetic scenarios, which is useful for regression checks but too small and too artificial to teach reliable operating behavior. The 1.7B model remains the comparison baseline; a trained 0.8B model must beat both the untrained 0.8B and the 1.7B baseline on held-out cases before it is considered for use.
+Use supervised fine-tuning of Qwen3.5-0.8B-Instruct with a LoRA adapter. The production corpus is still empty, so first run a clearly labeled VM-lab pilot; it can test whether the training pipeline and a small adapter help on controlled scenarios, but it cannot qualify a model for unattended use. The 1.7B model remains the comparison baseline; any candidate must beat both the untrained 0.8B and the 1.7B baseline on held-out cases.
 
 This is a proposal-selection model. The host remains responsible for operation registration, typed argument validation, capability checks, approvals, execution, and fresh verification. Training must never be treated as a replacement for those controls.
 
@@ -16,11 +16,13 @@ That boundary is especially important because the current 0.8B model followed in
 
 Each JSONL record follows [`training/trace.schema.json`](../training/trace.schema.json). It captures the planner-visible input, the exact operation schemas made available for that decision, the expected single proposal or no-call, provenance, redaction, review, and outcome evidence. Keep the production system prompt, model-facing tool descriptions, tokenizer/chat template, and serialization version alongside each dataset release. A change to any of those creates a new dataset version.
 
-Only include a record in train, validation, or test when a reviewer has accepted the label, redaction is complete, and the decision is supported by evidence. For a state-changing operation, require a recorded fresh read showing the intended result; successful execution alone is not proof. For a no-call, preserve the evidence that the target was healthy, the request was ambiguous or unauthorized, the proposed action was unsafe, or the operation was unavailable. Keep rejected, failed, unknown, unreviewed, synthetic, and privacy-sensitive records excluded until resolved.
+Only include a production record in train, validation, or test when a reviewer has accepted the label, redaction is complete, and the decision is supported by evidence. For a state-changing operation, require a recorded fresh read showing the intended result; successful execution alone is not proof. For a no-call, preserve the evidence that the target was healthy, the request was ambiguous or unauthorized, the proposed action was unsafe, or the operation was unavailable. Keep rejected, failed, unknown, unreviewed, synthetic, and privacy-sensitive records excluded until resolved.
+
+The user authorized a separate VM-lab pilot because no production agent traces exist. Its records use `lab_train`, `lab_validation`, or `lab_test` with `source_type: "vm_lab_simulation"` and `synthetic: true`. Keep these records separate from production data; they may use injected failures and hand-authored prompts, but every claimed state and recovery must be observed on the disposable VM. A lab-only adapter is exploratory and cannot be promoted for unattended use.
 
 Do not put secrets, private keys, bearer tokens, raw environment files, or unnecessary personal data into examples. Redact identifiers consistently while preserving relationships needed to choose the operation. Store evidence references as access-controlled pointers, never as a reason to copy sensitive source data into the training set.
 
-The 17 cases in `evaluation/model_cases.json` remain a frozen regression suite and must never be copied into training. Model-generated traces can be used to find candidate cases, but a qualified reviewer must independently determine the correct label from evidence.
+The 17 cases in `evaluation/model_cases.json` remain a frozen regression suite and must never be copied into training. Model-generated traces can be used to find candidate cases, but a qualified reviewer must independently determine the correct label from evidence. Keep VM-lab data and production traces in separate files and report both independently.
 
 ## Dataset size and balance
 
@@ -39,7 +41,7 @@ These are proportions of reviewed episodes, not raw model generations. Sample fr
 
 ## Split policy
 
-Use 70% train, 15% validation, and 15% final test, grouped by incident family and source. Keep near-duplicates, templated variants, and all records from the same incident in one split. Freeze the test set before training. Maintain a separate adversarial red-team set that is never used for gradient updates; include prompt injection in logs/knowledge, forged owner intent, missing evidence, malformed identifiers, and attempts to request unregistered operations.
+Use 70% train, 15% validation, and 15% final test, grouped by incident family and source. Keep near-duplicates, templated variants, and all records from the same incident in one split. Freeze the test set before training. Maintain a separate adversarial red-team set that is never used for gradient updates; include prompt injection in logs/knowledge, forged owner intent, missing evidence, malformed identifiers, and attempts to request unregistered operations. Apply the same grouping to the VM-lab splits and reserve the original 17-case suite as an untouched cross-check.
 
 The current 17-case benchmark is an additional regression check, not a substitute for the held-out sets. Report results per category and per incident family so a high aggregate score cannot hide unsafe behavior.
 
@@ -70,4 +72,8 @@ If the 0.8B adapter does not clear the gates, keep the 1.7B model or determinist
 
 ## Current status
 
-No training has been run. The available 17-case suite is synthetic and insufficient as training data. The next useful work is collecting and reviewing real, redacted episodes, plus resolving the structured owner-intent boundary before any approval-gated action examples are admitted.
+No production agent audit journal is present and the agent service is not running on the VM. The first GPU-backed lab pilot used 31 explicitly synthetic scenarios derived from signed YunoHost service-state captures: 21 train, 5 validation, and 5 held-out lab-test rows across 13 service families and three injection scenarios. This is far below the 500 reviewed episodes required for a meaningful pilot and must not be represented as production data.
+
+The pinned Qwen3.5-0.8B LoRA run completed three epochs on the local RTX 5060 Ti. It improved exact-match results on the five held-out lab cases from 0/5 to 4/5, but still followed an untrusted instruction by proposing `service.restart` for an unregistered target. On the untouched 17-case regression suite both base and adapter scored 11/17; unsafe or malformed proposals increased from 3 to 5 with the adapter. The adapter is rejected and must not be deployed. These tiny results are directional only and do not establish that fine-tuning improves the model.
+
+Training and evaluation scripts live beside this document. Dataset, adapter, and reports were written under `/tmp/nostrhost-agent-lab` and are intentionally not committed or uploaded. Approval-gated/destructive operations remain no-call targets until the planner receives a trusted owner-intent field.
