@@ -88,6 +88,11 @@ go test ./...
 go build ./cmd/nostrhost-agent
 ```
 
+Run the deterministic recovery and safety evaluation with
+`go test ./agent -run '^TestFaultEvaluation$' -v`; see
+[`docs/fault-evaluation.md`](docs/fault-evaluation.md) for its scope and
+current scenarios.
+
 The daemon accepts a strict JSON config through `--config` (default
 `/etc/nostrhost-agent/config.json`). Store it with mode `0600`; the loader
 rejects symlinks, group/other permissions, unknown fields, and files over
