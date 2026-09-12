@@ -25,6 +25,9 @@ lifecycle.
   next action uses fresh observations.
 - Run the cycle engine as a resident service with reactive triggers, optional
   periodic maintenance, sequential execution, and fail-closed shutdown.
+- Subscribe to recent NostrHost system, service, backup, and security notices;
+  only server-signed warning/critical events become fixed-vocabulary triggers,
+  and free-form notice summaries are discarded.
 - Build structured observations from explicitly selected read-only NostrHost
   operations; failed reads are represented without exposing adapter errors.
 - Verify configured actions by repeating a registered read-only operation and
@@ -75,7 +78,12 @@ maintain/autonomous mode, configure a loopback inference endpoint and a fresh
 read verification rule for each operation the agent may execute.
 An observe-only starting point is provided in
 [`examples/config.observe.example.json`](examples/config.observe.example.json);
-replace both key placeholders before starting the daemon.
+replace both key placeholders before starting the daemon. That example listens
+for notice events from the trusted server identity; set `listen_for_events` to
+`false` to use periodic maintenance only. `event_lookback` controls the recent
+history requested at startup (default `5m`, maximum `24h`). Notice content is
+reduced to a fixed event-kind trigger and an optional validated target; the
+summary and other free-form fields are never sent to the planner.
 
 ## License
 

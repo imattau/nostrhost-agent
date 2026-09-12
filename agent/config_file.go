@@ -22,6 +22,8 @@ type RuntimeFileConfig struct {
 	AuditPath           string              `json:"audit_path"`
 	Interval            string              `json:"interval,omitempty"`
 	RunImmediately      bool                `json:"run_immediately,omitempty"`
+	ListenForEvents     bool                `json:"listen_for_events,omitempty"`
+	EventLookback       string              `json:"event_lookback,omitempty"`
 }
 
 type RelayFileConfig struct {
@@ -83,6 +85,10 @@ func LoadRuntimeConfig(path string) (RuntimeConfig, error) {
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
+	eventLookback, err := parseOptionalDuration(config.EventLookback, "event_lookback")
+	if err != nil || eventLookback > 24*time.Hour {
+		return RuntimeConfig{}, errors.New("event_lookback must be a duration between zero and 24 hours")
+	}
 	var inference LLMPlannerConfig
 	if config.Policy.Level != Observe {
 		inference = LLMPlannerConfig{
@@ -100,6 +106,7 @@ func LoadRuntimeConfig(path string) (RuntimeConfig, error) {
 		ObservationQueries: config.ObservationQueries, VerificationRules: config.VerificationRules,
 		KnowledgeCorpusPath: config.KnowledgeCorpusPath, AuditPath: config.AuditPath,
 		Interval: interval, RunImmediately: config.RunImmediately,
+		ListenForEvents: config.ListenForEvents, EventLookback: eventLookback,
 	}, nil
 }
 

@@ -18,5 +18,7 @@
   ],
   "audit_path": "/var/lib/nostrhost-agent/audit.jsonl",
   "interval": "6h",
-  "run_immediately": true
+  "run_immediately": true,
+  "listen_for_events": true,
+  "event_lookback": "5m"
 }

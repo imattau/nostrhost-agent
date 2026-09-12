@@ -19,6 +19,8 @@ type RuntimeConfig struct {
 	AuditPath           string
 	Interval            time.Duration
 	RunImmediately      bool
+	ListenForEvents     bool
+	EventLookback       time.Duration
 	Triggers            <-chan CycleRequest
 	Approvals           ApprovalGate
 	Verifier            Verifier
@@ -29,16 +31,17 @@ type RuntimeConfig struct {
 // Its lifecycle is single-run; Run closes owned resources on exit and Close
 // supports cleanup when the runtime is constructed but never started.
 type ResidentRuntime struct {
-	mu       sync.Mutex
-	service  ResidentService
-	executor *NostrOperationExecutor
-	audit    *JSONLAuditSink
-	started  bool
-	closing  bool
-	closed   bool
-	cancel   context.CancelFunc
-	done     chan struct{}
-	closeErr error
+	mu          sync.Mutex
+	service     ResidentService
+	eventSource *NostrEventTriggerSource
+	executor    *NostrOperationExecutor
+	audit       *JSONLAuditSink
+	started     bool
+	closing     bool
+	closed      bool
+	cancel      context.CancelFunc
+	done        chan struct{}
+	closeErr    error
 }
 
 func NewResidentRuntime(cfg RuntimeConfig) (*ResidentRuntime, error) {
@@ -54,6 +57,12 @@ func NewResidentRuntime(cfg RuntimeConfig) (*ResidentRuntime, error) {
 	}
 	if cfg.Interval < 0 {
 		return nil, errors.New("maintenance interval cannot be negative")
+	}
+	if cfg.EventLookback < 0 || cfg.EventLookback > 24*time.Hour {
+		return nil, errors.New("event trigger lookback must be between zero and 24 hours")
+	}
+	if cfg.ListenForEvents && cfg.Triggers != nil {
+		return nil, errors.New("configure either Nostr events or an external trigger channel, not both")
 	}
 	if cfg.AuditPath == "" {
 		return nil, errors.New("local audit journal path is required")
@@ -85,6 +94,17 @@ func NewResidentRuntime(cfg RuntimeConfig) (*ResidentRuntime, error) {
 	observer, err := NewNostrOperationObserver(executor, registry, cfg.ObservationQueries)
 	if err != nil {
 		return nil, fmt.Errorf("create Nostr operation observer: %w", err)
+	}
+	var eventSource *NostrEventTriggerSource
+	if cfg.ListenForEvents {
+		relayTransport, ok := executor.Transport.(*RelayOperationTransport)
+		if !ok {
+			return nil, errors.New("resident runtime requires its concrete relay transport for event triggers")
+		}
+		eventSource, err = NewNostrEventTriggerSource(relayTransport, cfg.EventLookback)
+		if err != nil {
+			return nil, fmt.Errorf("create Nostr event trigger source: %w", err)
+		}
 	}
 	var planner Planner
 	if cfg.Policy.Level != Observe {
@@ -141,7 +161,7 @@ func NewResidentRuntime(cfg RuntimeConfig) (*ResidentRuntime, error) {
 	}
 	cleanupExecutor = false
 	cleanupAudit = false
-	return &ResidentRuntime{service: service, executor: executor, audit: audit}, nil
+	return &ResidentRuntime{service: service, eventSource: eventSource, executor: executor, audit: audit}, nil
 }
 
 func (r *ResidentRuntime) Run(ctx context.Context) error {
@@ -163,7 +183,11 @@ func (r *ResidentRuntime) Run(ctx context.Context) error {
 	done := r.done
 	r.mu.Unlock()
 
-	runErr := r.service.Run(child)
+	service := r.service
+	if r.eventSource != nil {
+		service.Triggers = r.eventSource.Start(child)
+	}
+	runErr := service.Run(child)
 	cancel()
 	closeErr := r.closeOwnedResources()
 	r.mu.Lock()

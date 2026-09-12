@@ -18,7 +18,9 @@ const validRuntimeConfigJSON = `{
   "policy": {"level": "observe", "capabilities": {"health.read": true}},
   "observation_queries": [{"operation": "system.health"}],
   "audit_path": "/var/lib/nostrhost-agent/audit.jsonl",
-  "interval": "6h"
+	"interval": "6h",
+	"listen_for_events": true,
+	"event_lookback": "15m"
 }`
 
 func writeRuntimeConfig(t *testing.T, body string, mode os.FileMode) string {
@@ -36,10 +38,10 @@ func TestLoadRuntimeConfigParsesPrivateFileAndDurations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if config.Interval != 6*time.Hour || config.Relay.ResultTimeout != 90*time.Second {
-		t.Fatalf("runtime durations were not parsed: interval=%s timeout=%s", config.Interval, config.Relay.ResultTimeout)
+	if config.Interval != 6*time.Hour || config.Relay.ResultTimeout != 90*time.Second || config.EventLookback != 15*time.Minute {
+		t.Fatalf("runtime durations were not parsed: interval=%s timeout=%s lookback=%s", config.Interval, config.Relay.ResultTimeout, config.EventLookback)
 	}
-	if config.Policy.Level != Observe || len(config.ObservationQueries) != 1 || config.Inference.Model != "" {
+	if config.Policy.Level != Observe || len(config.ObservationQueries) != 1 || config.Inference.Model != "" || !config.ListenForEvents {
 		t.Fatalf("unexpected observe-mode configuration: %#v", config)
 	}
 }
