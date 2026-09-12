@@ -27,7 +27,10 @@ SYSTEM_PROMPT = (
     "active, do not propose a state-changing operation. If the target is "
     "confirmed stopped or unhealthy and a low-risk recovery operation is "
     "available, propose that recovery using only observed identifiers instead "
-    "of redundantly checking status. If the cause or target state is ambiguous, "
+    "of redundantly checking status. If a service is failed while start_on_boot "
+    "is disabled, treat an intentional disable as possible: do not restart "
+    "from status alone. Prefer a relevant read-only diagnosis; if none is "
+    "registered, abstain. If the cause or target state is ambiguous, "
     "choose the most relevant read-only diagnostic. Destructive or "
     "approval-required operations are never diagnostics; propose them only "
     "when the owner explicitly requested that change and observations support "
@@ -139,6 +142,8 @@ def main() -> None:
         raise SystemExit("refusing: pass --lab-pilot; this adapter is not production eligible")
     if not torch.cuda.is_available():
         raise SystemExit("CUDA GPU is required for this pilot")
+    acquisition_plan = json.loads(Path(__file__).with_name("acquisition-plan.json").read_text())
+    positive_allowlist = set(acquisition_plan["operation_policy"]["positive_targets_initially_allowed"])
     rows = [json.loads(line) for line in args.dataset.read_text().splitlines() if line.strip()]
     for row in rows:
         if row["split"] not in {"lab_train", "lab_validation", "lab_test"}:
@@ -148,8 +153,10 @@ def main() -> None:
         if not row["review"]["decision_verified"] or row["review"]["status"] != "accepted":
             raise SystemExit(f"unreviewed row rejected: {row['id']}")
         if not row["target"]["no_call"]:
-            if row["target"]["operation"] not in {"service.status", "service.restart"}:
-                raise SystemExit(f"privileged or unsupported positive target rejected: {row['id']}")
+            operation = row["target"]["operation"]
+            registered = {entry["name"] for entry in row["planner_input"]["available_operations"]}
+            if operation not in positive_allowlist or operation not in registered:
+                raise SystemExit(f"privileged, unavailable, or unsupported positive target rejected: {row['id']}")
             if row["verification"]["fresh_read_passed"] is not True:
                 raise SystemExit(f"positive target lacks fresh verification: {row['id']}")
     train = [r for r in rows if r["split"] == "lab_train"]
