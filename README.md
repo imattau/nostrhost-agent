@@ -22,6 +22,8 @@ agent-side effects are behind typed interfaces.
   next action uses fresh observations.
 - Run the cycle engine as a resident service with reactive triggers, optional
   periodic maintenance, sequential execution, and fail-closed shutdown.
+- Build structured observations from explicitly selected read-only NostrHost
+  operations; failed reads are represented without exposing adapter errors.
 - Publish signed kind-2200 operation requests to the local relay and accept
   only correlated, signature-verified kind-2204 results from the configured
   server identity.
