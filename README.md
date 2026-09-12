@@ -34,6 +34,8 @@ agent-side effects are behind typed interfaces.
   arguments; a policy decision is not an execution credential.
 - Record observations, proposals, policy outcomes, execution results, and
   verification in a structured cycle trace.
+- Persist each cycle checkpoint to a private, append-only local JSONL journal;
+  recover an incomplete final record after process interruption.
 - Deny unknown operations and destructive operations by default.
 - Save policy decisions before approval or execution, and save an `executing`
   trace state before dispatching an operation.
