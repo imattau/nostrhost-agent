@@ -4,9 +4,10 @@ The native local administrator for NostrHost. The model is an unprivileged
 planner; this module owns typed operations, autonomy policy, execution
 boundaries, and auditable administration traces.
 
-The first increment deliberately contains no model runtime and performs no
-system changes. It establishes a deterministic policy boundary that a future
-planner and the NostrHost operation executor can share.
+The first increment deliberately contains no model runtime or concrete system
+adapters. It establishes a deterministic policy boundary that future planner
+and NostrHost control-plane adapters can share; all effects are behind injected
+interfaces.
 
 ## Initial scope
 
