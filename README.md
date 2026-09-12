@@ -93,6 +93,11 @@ Run the deterministic recovery and safety evaluation with
 [`docs/fault-evaluation.md`](docs/fault-evaluation.md) for its scope and
 current scenarios.
 
+The planner-only local model selection suite is available through
+`go run ./cmd/nostrhost-agent-eval --model <local-model-id>`; candidate models,
+hardware constraints, and measurement rules are in
+[`docs/model-selection.md`](docs/model-selection.md).
+
 The daemon accepts a strict JSON config through `--config` (default
 `/etc/nostrhost-agent/config.json`). Store it with mode `0600`; the loader
 rejects symlinks, group/other permissions, unknown fields, and files over

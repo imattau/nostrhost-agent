@@ -47,7 +47,7 @@ func TestOpenAICompatiblePlannerSendsOnlyGrantedToolsAndParsesToolCalls(t *testi
 	if len(proposals) != 1 || proposals[0].Operation != "app.health" || proposals[0].Args["app"] != "photos" {
 		t.Fatalf("unexpected proposal output: %#v", proposals)
 	}
-	if got.Model != "qwen-local" || got.ToolChoice != "auto" || len(got.Tools) != 1 || got.Tools[0].Function.Name != "app.health" {
+	if got.Model != "qwen-local" || got.ToolChoice != "auto" || got.MaxTokens != maxPlannerOutputTokens || got.ReasoningEffort != "none" || len(got.Tools) != 1 || got.Tools[0].Function.Name != "app.health" {
 		t.Fatalf("planner request did not preserve the host tool boundary: %#v", got)
 	}
 	if !strings.Contains(string(got.Tools[0].Function.Parameters), `"required":["app"]`) {
