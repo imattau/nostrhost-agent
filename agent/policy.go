@@ -50,6 +50,7 @@ const (
 // descriptive only; the operation adapter must validate concrete arguments.
 type OperationSpec struct {
 	Name             string
+	Description      string
 	Capability       Capability
 	Risk             Risk
 	AutonomousAt     AutonomyLevel
@@ -143,23 +144,25 @@ func (s OperationSpec) ValidateArgs(args map[string]any) error {
 	return s.validateArgs(args)
 }
 
+func (s OperationSpec) hasArgumentValidator() bool { return s.validateArgs != nil }
+
 // DefaultRegistry is intentionally small and conservative. Operation names
 // are stable API identifiers; no operation accepts arbitrary commands.
 func DefaultRegistry() map[string]OperationSpec {
 	specs := []OperationSpec{
-		definedOperation(OperationSpec{Name: "system.health", Capability: HealthRead, Risk: RiskRead, AutonomousAt: Maintain}, nil, nil),
-		definedOperation(OperationSpec{Name: "service.status", Capability: SystemRead, Risk: RiskRead, AutonomousAt: Maintain}, nil, map[string]string{"name": "string"}),
-		definedOperation(OperationSpec{Name: "app.health", Capability: HealthRead, Risk: RiskRead, AutonomousAt: Maintain}, map[string]string{"app": "string"}, nil),
-		definedOperation(OperationSpec{Name: "app.logs", Capability: LogsRead, Risk: RiskRead, AutonomousAt: Maintain}, map[string]string{"app": "string"}, map[string]string{"lines": "integer"}),
-		definedOperation(OperationSpec{Name: "disk.status", Capability: SystemRead, Risk: RiskRead, AutonomousAt: Maintain}, nil, nil),
-		definedOperation(OperationSpec{Name: "diagnosis.run", Capability: DiagnosisRun, Risk: RiskLow, AutonomousAt: Maintain}, nil, map[string]string{"target": "string"}),
-		definedOperation(OperationSpec{Name: "backup.create", Capability: BackupCreate, Risk: RiskLow, AutonomousAt: Maintain}, nil, map[string]string{"app": "string"}),
-		definedOperation(OperationSpec{Name: "service.restart", Capability: ServiceRestart, Risk: RiskLow, AutonomousAt: Maintain}, map[string]string{"name": "string"}, nil),
-		definedOperation(OperationSpec{Name: "state.diff", Capability: StateDiff, Risk: RiskRead, AutonomousAt: Maintain}, nil, nil),
-		definedOperation(OperationSpec{Name: "package.updates", Capability: SystemRead, Risk: RiskRead, AutonomousAt: Maintain}, nil, nil),
-		definedOperation(OperationSpec{Name: "package.upgrade", Capability: PackageUpdate, Risk: RiskElevated, AutonomousAt: Autonomous, RequiresApproval: true}, map[string]string{"app": "string"}, nil),
-		definedOperation(OperationSpec{Name: "app.restore", Capability: AppRestore, Risk: RiskDestructive, AutonomousAt: Autonomous, RequiresApproval: true}, map[string]string{"app": "string", "snapshot": "string"}, nil),
-		definedOperation(OperationSpec{Name: "firewall.change", Capability: FirewallWrite, Risk: RiskDestructive, AutonomousAt: Autonomous, RequiresApproval: true}, map[string]string{"action": "string", "port": "integer"}, map[string]string{"protocol": "string"}),
+		definedOperation(OperationSpec{Name: "system.health", Description: "Summarized host health and current health-check failures.", Capability: HealthRead, Risk: RiskRead, AutonomousAt: Maintain}, nil, nil),
+		definedOperation(OperationSpec{Name: "service.status", Description: "Read status for all services or one named service.", Capability: SystemRead, Risk: RiskRead, AutonomousAt: Maintain}, nil, map[string]string{"name": "string"}),
+		definedOperation(OperationSpec{Name: "app.health", Description: "Read health status for one installed application.", Capability: HealthRead, Risk: RiskRead, AutonomousAt: Maintain}, map[string]string{"app": "string"}, nil),
+		definedOperation(OperationSpec{Name: "app.logs", Description: "Read a bounded recent log excerpt for one application.", Capability: LogsRead, Risk: RiskRead, AutonomousAt: Maintain}, map[string]string{"app": "string"}, map[string]string{"lines": "integer"}),
+		definedOperation(OperationSpec{Name: "disk.status", Description: "Read filesystem usage and available space.", Capability: SystemRead, Risk: RiskRead, AutonomousAt: Maintain}, nil, nil),
+		definedOperation(OperationSpec{Name: "diagnosis.run", Description: "Run one registered diagnostic for the selected target.", Capability: DiagnosisRun, Risk: RiskLow, AutonomousAt: Maintain}, nil, map[string]string{"target": "string"}),
+		definedOperation(OperationSpec{Name: "backup.create", Description: "Create a point-in-time backup for the host or one application.", Capability: BackupCreate, Risk: RiskLow, AutonomousAt: Maintain}, nil, map[string]string{"app": "string"}),
+		definedOperation(OperationSpec{Name: "service.restart", Description: "Restart one known service by name.", Capability: ServiceRestart, Risk: RiskLow, AutonomousAt: Maintain}, map[string]string{"name": "string"}, nil),
+		definedOperation(OperationSpec{Name: "state.diff", Description: "Read a bounded semantic state diff.", Capability: StateDiff, Risk: RiskRead, AutonomousAt: Maintain}, nil, nil),
+		definedOperation(OperationSpec{Name: "package.updates", Description: "List pending system and application updates without installing them.", Capability: SystemRead, Risk: RiskRead, AutonomousAt: Maintain}, nil, nil),
+		definedOperation(OperationSpec{Name: "package.upgrade", Description: "Upgrade one named application; owner approval is required.", Capability: PackageUpdate, Risk: RiskElevated, AutonomousAt: Autonomous, RequiresApproval: true}, map[string]string{"app": "string"}, nil),
+		definedOperation(OperationSpec{Name: "app.restore", Description: "Restore one application snapshot; owner approval is required.", Capability: AppRestore, Risk: RiskDestructive, AutonomousAt: Autonomous, RequiresApproval: true}, map[string]string{"app": "string", "snapshot": "string"}, nil),
+		definedOperation(OperationSpec{Name: "firewall.change", Description: "Change a firewall rule; owner approval is required.", Capability: FirewallWrite, Risk: RiskDestructive, AutonomousAt: Autonomous, RequiresApproval: true}, map[string]string{"action": "string", "port": "integer"}, map[string]string{"protocol": "string"}),
 	}
 	registry := make(map[string]OperationSpec, len(specs))
 	for _, spec := range specs {

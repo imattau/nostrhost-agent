@@ -10,7 +10,9 @@ import (
 	"time"
 )
 
-const hardMaxProposals = 32
+// A cycle executes at most one proposal so every write is followed by fresh
+// observations on the next cycle instead of acting on a stale multi-step plan.
+const hardMaxProposals = 1
 
 // Observer returns a structured, redacted read model. Implementations must not
 // expose arbitrary filesystem contents or secrets to the planner or audit log.
@@ -81,6 +83,9 @@ func (r CycleRunner) Run(ctx context.Context, request CycleRequest) (CycleTrace,
 	if request.Trigger == "" {
 		return CycleTrace{}, errors.New("cycle trigger is required")
 	}
+	if err := ValidateRegistry(r.Registry); err != nil {
+		return CycleTrace{}, fmt.Errorf("invalid operation registry: %w", err)
+	}
 	now := r.Now
 	if now == nil {
 		now = time.Now
@@ -117,14 +122,17 @@ func (r CycleRunner) Run(ctx context.Context, request CycleRequest) (CycleTrace,
 		return r.finish(ctx, trace, now, "executor_unavailable", "no operation executor is configured", errors.New("executor is required for execution modes"))
 	}
 	proposals, err := r.Planner.Plan(ctx, PlanningInput{
-		Trigger: request.Trigger, Target: request.Target, Observations: observations,
+		Trigger: request.Trigger, Target: request.Target, Observations: trace.Observations,
 		Operations: r.availableOperations(),
 	})
 	if err != nil {
 		return r.finish(ctx, trace, now, "planning_failed", "planner could not produce a plan", err)
 	}
 	limit := r.MaxProposals
-	if limit <= 0 || limit > hardMaxProposals {
+	if limit <= 0 {
+		limit = hardMaxProposals
+	}
+	if limit > hardMaxProposals {
 		limit = hardMaxProposals
 	}
 	if len(proposals) > limit {
@@ -254,7 +262,8 @@ func (r CycleRunner) Run(ctx context.Context, request CycleRequest) (CycleTrace,
 		result, resolution = "verified", "one or more approved operations completed and passed verification"
 	}
 	if trace.Result == "proposal_limit_reached" {
-		result = trace.Result
+		result = "proposal_limit_reached"
+		resolution = "one proposal was handled; additional proposals were discarded and require fresh observations"
 	}
 	return r.finish(ctx, trace, now, result, resolution, nil)
 }

@@ -122,12 +122,17 @@ func TestCycleRunnerExecutesOnlyAfterPolicyAndVerifies(t *testing.T) {
 func TestCycleRunnerAssistNeverExecutes(t *testing.T) {
 	planner := &fakePlanner{proposals: []Proposal{{Operation: "app.health", Args: map[string]any{"app": "photos"}}}}
 	executor := &fakeExecutor{}
-	trace, err := testRunner(Assist, HealthRead, planner, executor, &fakeAudit{}).Run(context.Background(), CycleRequest{Trigger: "scheduled"})
+	runner := testRunner(Assist, HealthRead, planner, executor, &fakeAudit{})
+	runner.Observer = fakeObserver{value: map[string]any{"app": "photos", "api_token": "must-not-reach-planner"}}
+	trace, err := runner.Run(context.Background(), CycleRequest{Trigger: "scheduled"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if executor.calls != 0 || trace.Proposals[0].Outcome != string(DecisionProposalOnly) {
 		t.Fatalf("assist executed or lost proposal: calls=%d trace=%#v", executor.calls, trace)
+	}
+	if planner.input.Observations["api_token"] != redactedValue {
+		t.Fatalf("planner received unsanitized observations: %#v", planner.input.Observations)
 	}
 }
 
@@ -200,7 +205,7 @@ func TestCycleRunnerTruncatesExcessPlannerOutput(t *testing.T) {
 		{Operation: "app.health", Args: map[string]any{"app": "photos"}},
 	}}
 	runner := testRunner(Assist, HealthRead, planner, &fakeExecutor{}, &fakeAudit{})
-	runner.MaxProposals = 1
+	runner.MaxProposals = 8 // configuration cannot raise the per-cycle action bound
 	trace, err := runner.Run(context.Background(), CycleRequest{Trigger: "scheduled"})
 	if err != nil {
 		t.Fatal(err)

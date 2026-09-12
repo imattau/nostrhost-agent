@@ -18,6 +18,33 @@ func NewOperationSpec(spec OperationSpec, validate ArgumentValidator) OperationS
 	return spec
 }
 
+// ValidateRegistry rejects malformed host configuration before the agent
+// starts observing or proposing work.
+func ValidateRegistry(registry map[string]OperationSpec) error {
+	if len(registry) == 0 {
+		return fmt.Errorf("operation registry is empty")
+	}
+	for name, spec := range registry {
+		if name == "" || spec.Name != name || spec.Capability == "" {
+			return fmt.Errorf("operation registry key and metadata do not match")
+		}
+		if spec.Risk > RiskDestructive {
+			return fmt.Errorf("operation %q has an invalid risk classification", name)
+		}
+		if _, ok := autonomyRank[spec.AutonomousAt]; !ok {
+			return fmt.Errorf("operation %q has an invalid autonomy threshold", name)
+		}
+		if !spec.hasArgumentValidator() {
+			return fmt.Errorf("operation %q has no argument validator", name)
+		}
+		var schema map[string]any
+		if err := json.Unmarshal([]byte(spec.ArgsSchema), &schema); err != nil || schema["type"] != "object" {
+			return fmt.Errorf("operation %q has an invalid object argument schema", name)
+		}
+	}
+	return nil
+}
+
 func definedOperation(spec OperationSpec, required, optional map[string]string) OperationSpec {
 	properties := make(map[string]map[string]string, len(required)+len(optional))
 	for name, kind := range required {

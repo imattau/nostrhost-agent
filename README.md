@@ -4,10 +4,10 @@ The native local administrator for NostrHost. The model is an unprivileged
 planner; this module owns typed operations, autonomy policy, execution
 boundaries, and auditable administration traces.
 
-The first increment deliberately contains no model runtime or concrete system
-adapters. It establishes a deterministic policy boundary that future planner
-and NostrHost control-plane adapters can share; all effects are behind injected
-interfaces.
+The current increment establishes the deterministic policy boundary, a local
+OpenAI-compatible planner, and the NostrHost operation relay adapter. Machine
+changes still run through NostrHost's authoritative operation daemon; all
+agent-side effects are behind typed interfaces.
 
 ## Initial scope
 
@@ -18,8 +18,11 @@ interfaces.
 - Evaluate proposals under `observe`, `assist`, `maintain`, or `autonomous`
   autonomy levels.
 - Run a bounded Observe → Diagnose → Plan → Execute → Verify cycle through
-  injected host interfaces; signed approval checks and audit persistence sit
-  on the execution path.
+  injected host interfaces; each cycle handles at most one proposal so the
+  next action uses fresh observations.
+- Publish signed kind-2200 operation requests to the local relay and accept
+  only correlated, signature-verified kind-2204 results from the configured
+  server identity.
 - Require the executor to re-check authorization and validate operation
   arguments; a policy decision is not an execution credential.
 - Record observations, proposals, policy outcomes, execution results, and
@@ -33,8 +36,11 @@ interfaces.
 There is no shell operation. The agent cannot change its own capabilities or
 disable audit. The host must provide typed operation adapters, a verifier that
 re-reads current health, and an approval gate that checks signed owner approval.
-Relay persistence, concrete NostrHost adapters, retrieval, and inference are
-subsequent increments.
+The relay adapter only allows loopback relay URLs and uses the agent identity
+for NIP-42 authentication; NostrHost's operation daemon remains authoritative
+for per-operation authorization and execution. The local planner only emits
+typed proposals and cannot execute operations. Retrieval and the resident
+service lifecycle are subsequent increments.
 
 ## Development
 
