@@ -31,6 +31,14 @@ func run() error {
 		return err
 	}
 	if *checkConfig {
+		if err := agent.ValidateRuntimeConfig(config); err != nil {
+			return err
+		}
+		transport, err := agent.NewRelayOperationTransport(config.Relay)
+		if err != nil {
+			return err
+		}
+		transport.Close()
 		fmt.Println("configuration valid")
 		return nil
 	}

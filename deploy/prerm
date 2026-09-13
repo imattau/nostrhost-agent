@@ -3,6 +3,9 @@ set -e
 
 case "$1" in
   remove|deconfigure)
+    if [ "$1" = remove ] && [ -x /usr/bin/nostrhost ]; then
+      /usr/bin/nostrhost agent disable >/dev/null 2>&1 || true
+    fi
     if command -v deb-systemd-invoke >/dev/null 2>&1; then
       deb-systemd-invoke stop nostrhost-agent.service >/dev/null || true
     fi

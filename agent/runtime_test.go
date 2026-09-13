@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -22,6 +23,16 @@ func testRuntimeConfig(t *testing.T) RuntimeConfig {
 		Policy:             Policy{Level: Observe, Capabilities: map[Capability]bool{HealthRead: true}},
 		ObservationQueries: []ObservationQuery{{Operation: "system.health"}},
 		AuditPath:          filepath.Join(t.TempDir(), "audit.jsonl"),
+	}
+}
+
+func TestValidateRuntimeConfigHasNoFilesystemSideEffects(t *testing.T) {
+	cfg := testRuntimeConfig(t)
+	if err := ValidateRuntimeConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(cfg.AuditPath); !os.IsNotExist(err) {
+		t.Fatalf("validation should not create the audit journal, stat error=%v", err)
 	}
 }
 

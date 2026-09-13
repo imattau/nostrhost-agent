@@ -83,12 +83,16 @@ package with a dedicated, hardened systemd unit. Install does not create an
 identity/config, grant relay scopes, enable the unit, or download a model. On
 an initialized NostrHost host, run `sudo nostrhost agent init` to create a
 separate Observe-mode identity and root-only config. Review the identity and
-grant only the required relay scopes explicitly, then run
+grant only the required relay scopes explicitly (the starter query needs
+`services.read`, e.g. `sudo nostrhost capability grant <agent-pubkey>
+services.read --type agent`), then run
 `sudo nostrhost agent enable`. `nostrhost agent disable` stops and disables it.
-The unit passes the root-managed config to the unprivileged daemon through a
-systemd credential copy. Package removal retains the config and audit journal;
-purge removes them. Configure operation-specific verification rules before
-using maintain/autonomous policies.
+Enable adds the agent public key to the relay's writer allowlist, which is
+separate from its operation capability grant; disable removes that configured
+writer entry. The unit passes the root-managed config to the unprivileged
+daemon through a systemd credential copy. Package removal retains the config
+and audit journal; purge removes them. Configure operation-specific
+verification rules before using maintain/autonomous policies.
 
 ## Offline community contribution review
 

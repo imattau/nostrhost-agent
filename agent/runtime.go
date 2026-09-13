@@ -45,40 +45,54 @@ type ResidentRuntime struct {
 	closeErr    error
 }
 
-func NewResidentRuntime(cfg RuntimeConfig) (*ResidentRuntime, error) {
+// ValidateRuntimeConfig checks policy, registry, trigger, and audit settings
+// without opening files or constructing network resources. It is also used by
+// the package's explicit pre-enable config check.
+func ValidateRuntimeConfig(cfg RuntimeConfig) error {
 	registry := cfg.Registry
 	if registry == nil {
 		registry = DefaultRegistry()
 	}
 	if err := ValidateRegistry(registry); err != nil {
-		return nil, fmt.Errorf("invalid operation registry: %w", err)
+		return fmt.Errorf("invalid operation registry: %w", err)
 	}
 	if _, ok := autonomyRank[cfg.Policy.Level]; !ok {
-		return nil, fmt.Errorf("unknown autonomy level %q", cfg.Policy.Level)
+		return fmt.Errorf("unknown autonomy level %q", cfg.Policy.Level)
 	}
 	if cfg.Interval < 0 {
-		return nil, errors.New("maintenance interval cannot be negative")
+		return errors.New("maintenance interval cannot be negative")
 	}
 	if cfg.EventLookback < 0 || cfg.EventLookback > 24*time.Hour {
-		return nil, errors.New("event trigger lookback must be between zero and 24 hours")
+		return errors.New("event trigger lookback must be between zero and 24 hours")
 	}
 	if cfg.ListenForEvents && cfg.Triggers != nil {
-		return nil, errors.New("configure either Nostr events or an external trigger channel, not both")
+		return errors.New("configure either Nostr events or an external trigger channel, not both")
 	}
 	if cfg.AuditPath == "" {
-		return nil, errors.New("local audit journal path is required")
+		return errors.New("local audit journal path is required")
 	}
 	for _, query := range cfg.ObservationQueries {
 		spec, exists := registry[query.Operation]
 		if exists && !cfg.Policy.Capabilities[spec.Capability] {
-			return nil, fmt.Errorf("observation query %q requires disabled local capability %q", query.Operation, spec.Capability)
+			return fmt.Errorf("observation query %q requires disabled local capability %q", query.Operation, spec.Capability)
 		}
 	}
 	for _, rule := range cfg.VerificationRules {
 		spec, exists := registry[rule.CheckOperation]
 		if exists && !cfg.Policy.Capabilities[spec.Capability] {
-			return nil, fmt.Errorf("verification check %q requires disabled local capability %q", rule.CheckOperation, spec.Capability)
+			return fmt.Errorf("verification check %q requires disabled local capability %q", rule.CheckOperation, spec.Capability)
 		}
+	}
+	return nil
+}
+
+func NewResidentRuntime(cfg RuntimeConfig) (*ResidentRuntime, error) {
+	if err := ValidateRuntimeConfig(cfg); err != nil {
+		return nil, fmt.Errorf("invalid resident runtime configuration: %w", err)
+	}
+	registry := cfg.Registry
+	if registry == nil {
+		registry = DefaultRegistry()
 	}
 
 	executor, err := NewControlPlaneExecutor(cfg.Relay, registry)
