@@ -1,0 +1,21 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+  configure)
+    if ! getent group nostrhost-agent >/dev/null; then
+      addgroup --system nostrhost-agent
+    fi
+    if ! getent passwd nostrhost-agent >/dev/null; then
+      adduser --system --ingroup nostrhost-agent --no-create-home \
+        --home /nonexistent --shell /usr/sbin/nologin nostrhost-agent
+    fi
+    install -d -o nostrhost-agent -g nostrhost-agent -m 0700 /var/lib/nostrhost-agent
+    install -d -o root -g root -m 0750 /etc/nostrhost-agent
+    systemctl daemon-reload || true
+    ;;
+  abort-upgrade|abort-remove|abort-deconfigure|'')
+    ;;
+esac
+
+exit 0

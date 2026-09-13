@@ -78,8 +78,17 @@ exponential retry backoff. Configure the optional settings like this:
 
 For llama.cpp, use a dedicated embedding model with embedding mode and a
 non-`none` pooling type, then point these settings at its loopback server.
-Operators provide
-service-manager packaging and configure operation-specific verification rules.
+The umbrella NostrHost repository packages the daemon as an optional APT
+package with a dedicated, hardened systemd unit. Install does not create an
+identity/config, grant relay scopes, enable the unit, or download a model. On
+an initialized NostrHost host, run `sudo nostrhost agent init` to create a
+separate Observe-mode identity and root-only config. Review the identity and
+grant only the required relay scopes explicitly, then run
+`sudo nostrhost agent enable`. `nostrhost agent disable` stops and disables it.
+The unit passes the root-managed config to the unprivileged daemon through a
+systemd credential copy. Package removal retains the config and audit journal;
+purge removes them. Configure operation-specific verification rules before
+using maintain/autonomous policies.
 
 ## Offline community contribution review
 
@@ -134,7 +143,8 @@ change the active runtime configuration.
 The daemon accepts a strict JSON config through `--config` (default
 `/etc/nostrhost-agent/config.json`). Store it with mode `0600`; the loader
 rejects symlinks, group/other permissions, unknown fields, and files over
-256 KiB. Intervals and relay result timeouts use Go duration strings such as
+256 KiB. `--check-config --config PATH` validates a config without starting
+the resident service. Intervals and relay result timeouts use Go duration strings such as
 `"6h"` and `"90s"`. Observe mode does not require an inference endpoint. For
 maintain/autonomous mode, configure a loopback inference endpoint and a fresh
 read verification rule for each operation the agent may execute.

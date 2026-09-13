@@ -1,0 +1,33 @@
+[Unit]
+Description=NostrHost Agent
+ConditionPathExists=/etc/nostrhost-agent/config.json
+After=network-online.target nostrhost-control.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=nostrhost-agent
+Group=nostrhost-agent
+StateDirectory=nostrhost-agent
+StateDirectoryMode=0700
+LoadCredential=runtime-config:/etc/nostrhost-agent/config.json
+ExecStart=/usr/bin/nostrhost-agent --config=%d/runtime-config
+Restart=on-failure
+RestartSec=5s
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+LockPersonality=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/var/lib/nostrhost-agent
+
+[Install]
+WantedBy=multi-user.target

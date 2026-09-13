@@ -1,0 +1,29 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+  remove)
+    if command -v deb-systemd-helper >/dev/null 2>&1; then
+      deb-systemd-helper disable nostrhost-agent.service >/dev/null || true
+    fi
+    ;;
+  purge)
+    if command -v deb-systemd-helper >/dev/null 2>&1; then
+      deb-systemd-helper purge nostrhost-agent.service >/dev/null || true
+    fi
+    rm -f /etc/nostrhost-agent/config.json
+    rmdir /etc/nostrhost-agent 2>/dev/null || true
+    rm -rf /var/lib/nostrhost-agent
+    if getent passwd nostrhost-agent >/dev/null; then
+      deluser --system nostrhost-agent >/dev/null 2>&1 || true
+    fi
+    if getent group nostrhost-agent >/dev/null; then
+      delgroup --system nostrhost-agent >/dev/null 2>&1 || true
+    fi
+    ;;
+esac
+
+if command -v systemctl >/dev/null 2>&1; then
+  systemctl daemon-reload || true
+fi
+exit 0

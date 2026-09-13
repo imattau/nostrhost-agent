@@ -21,6 +21,7 @@ func main() {
 
 func run() error {
 	configPath := flag.String("config", "/etc/nostrhost-agent/config.json", "path to the private runtime configuration")
+	checkConfig := flag.Bool("check-config", false, "validate the runtime configuration and exit")
 	flag.Parse()
 	if flag.NArg() != 0 {
 		return fmt.Errorf("unexpected positional arguments")
@@ -28,6 +29,10 @@ func run() error {
 	config, err := agent.LoadRuntimeConfig(*configPath)
 	if err != nil {
 		return err
+	}
+	if *checkConfig {
+		fmt.Println("configuration valid")
+		return nil
 	}
 	runtime, err := agent.NewResidentRuntime(config)
 	if err != nil {
