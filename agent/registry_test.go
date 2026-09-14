@@ -30,6 +30,7 @@ func TestNsiteReadsRegisteredAndWritesAbsent(t *testing.T) {
 		"nsite.validate_manifest",
 		"nsite.reachability",
 		"nsite.publish.plan",
+		"nsite.domain.list",
 	}
 	for _, name := range reads {
 		spec, ok := registry[name]
@@ -52,6 +53,8 @@ func TestNsiteReadsRegisteredAndWritesAbsent(t *testing.T) {
 		"nsite.gateway.enable",
 		"nsite.gateway.disable",
 		"nsite.gateway.configure",
+		"nsite.domain.attach",
+		"nsite.domain.detach",
 	}
 	for _, name := range writes {
 		if _, ok := registry[name]; ok {

@@ -175,6 +175,7 @@ func DefaultRegistry() map[string]OperationSpec {
 		definedOperation(OperationSpec{Name: "nsite.validate_manifest", Description: "Validate a candidate manifest event; no network.", Capability: NsitesRead, Risk: RiskRead, AutonomousAt: Maintain}, map[string]string{"event": "string"}, nil),
 		definedOperation(OperationSpec{Name: "nsite.reachability", Description: "Probe relay/server reachability (bounded).", Capability: NsitesRead, Risk: RiskRead, AutonomousAt: Maintain}, nil, map[string]string{"relays": "string", "servers": "string"}),
 		definedOperation(OperationSpec{Name: "nsite.publish.plan", Description: "Build an unsigned manifest + plan digest from an inventory or draft site.", Capability: NsitesRead, Risk: RiskRead, AutonomousAt: Maintain}, map[string]string{"pubkey": "string"}, map[string]string{"kind": "integer", "d": "string", "site": "string"}),
+		definedOperation(OperationSpec{Name: "nsite.domain.list", Description: "List attached custom domains (Phase 4, read only).", Capability: NsitesRead, Risk: RiskRead, AutonomousAt: Maintain}, nil, nil),
 	}
 	registry := make(map[string]OperationSpec, len(specs))
 	for _, spec := range specs {
