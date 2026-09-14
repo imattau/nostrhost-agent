@@ -31,27 +31,28 @@ func run() error {
 	candidate := flags.String("candidate", "", "path to a contribution candidate written by nostrhost-agent-export")
 	tokenFile := flags.String("token-file", "", "root-only file containing the Hugging Face token")
 	repo := flags.String("repo", "", "Hugging Face dataset repo, e.g. owner/dataset")
-	revision := flags.String("revision", "main", "dataset branch to commit the candidate to")
+	baseRevision := flags.String("base-revision", "main", "dataset branch to open the pull request against")
 	if err := flags.Parse(os.Args[1:]); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 || *candidate == "" || *tokenFile == "" || *repo == "" {
-		return fmt.Errorf("usage: nostrhost-agent-contribute --candidate PATH --token-file PATH --repo OWNER/DATASET [--revision BRANCH]")
+		return fmt.Errorf("usage: nostrhost-agent-contribute --candidate PATH --token-file PATH --repo OWNER/DATASET [--base-revision BRANCH]")
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	client := &http.Client{Timeout: 60 * time.Second}
-	result, err := agent.SubmitContributionCandidate(ctx, client, *candidate, *tokenFile, *repo, *revision)
+	result, err := agent.SubmitContributionCandidate(ctx, client, *candidate, *tokenFile, *repo, *baseRevision)
 	if err != nil {
 		return err
 	}
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(struct {
-		Uploaded bool   `json:"uploaded"`
-		Repo     string `json:"repo"`
-		Path     string `json:"path"`
-		Revision string `json:"revision"`
-		Message  string `json:"message"`
-	}{true, result.Repo, result.Path, result.Revision, "uploaded the reviewed candidate only; no other file on this host was read or transmitted"})
+		Uploaded       bool   `json:"uploaded"`
+		Repo           string `json:"repo"`
+		Path           string `json:"path"`
+		BaseRevision   string `json:"base_revision"`
+		PullRequestURL string `json:"pull_request_url"`
+		Message        string `json:"message"`
+	}{true, result.Repo, result.Path, result.BaseRevision, result.PullRequestURL, "opened a pull request with the reviewed candidate only; no other file on this host was read or transmitted, and nothing was committed directly"})
 }

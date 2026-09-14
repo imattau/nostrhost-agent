@@ -3,6 +3,7 @@ package agent
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,25 +15,31 @@ import (
 
 const maxContributionCandidateBytes = 4 << 20
 
-// ContributionSubmission is the result of successfully uploading one already
-// locally-redacted candidate file to a Hugging Face dataset repository. This
-// is the only place in nostrhost-agent that ever transmits contribution data,
-// and it never runs on its own — only an explicit operator action invokes it.
+// ContributionSubmission is the result of successfully proposing one
+// already locally-redacted candidate file as a pull request against a
+// Hugging Face dataset repository. This is the only place in
+// nostrhost-agent that ever transmits contribution data, and it never runs
+// on its own — only an explicit operator action invokes it. It never
+// commits directly to the target branch: every submission is a PR, so a
+// maintainer reviews it before it becomes part of the dataset, matching the
+// "submitted, not trusted" model in the community contribution loop.
 type ContributionSubmission struct {
-	Repo     string `json:"repo"`
-	Path     string `json:"path"`
-	Revision string `json:"revision"`
+	Repo           string `json:"repo"`
+	Path           string `json:"path"`
+	BaseRevision   string `json:"base_revision"`
+	PullRequestURL string `json:"pull_request_url"`
 }
 
-// SubmitContributionCandidate uploads exactly one file — the candidate the
-// operator explicitly prepared and reviewed via nostrhost-agent-export — to a
-// Hugging Face dataset repo the operator configured. It refuses to run
-// against anything that doesn't look like a candidate this package produced,
-// reads the token from a root-only file (never argv/env), and does not touch
-// the source audit journal or any other file.
-func SubmitContributionCandidate(ctx context.Context, client *http.Client, candidatePath, tokenPath, repo, revision string) (ContributionSubmission, error) {
-	if revision == "" {
-		revision = "main"
+// SubmitContributionCandidate opens a pull request adding exactly one file —
+// the candidate the operator explicitly prepared and reviewed via
+// nostrhost-agent-export — against a Hugging Face dataset repo the operator
+// configured. It refuses to run against anything that doesn't look like a
+// candidate this package produced, reads the token from a root-only file
+// (never argv/env), and does not touch the source audit journal or any
+// other file.
+func SubmitContributionCandidate(ctx context.Context, client *http.Client, candidatePath, tokenPath, repo, baseRevision string) (ContributionSubmission, error) {
+	if baseRevision == "" {
+		baseRevision = "main"
 	}
 	if !modelRepositoryPattern.MatchString(repo) {
 		return ContributionSubmission{}, errors.New("dataset repo must look like <owner>/<name>")
@@ -46,34 +53,67 @@ func SubmitContributionCandidate(ctx context.Context, client *http.Client, candi
 		return ContributionSubmission{}, err
 	}
 	remotePath := candidate.CandidateID + ".json"
-	uploadURL := fmt.Sprintf("https://huggingface.co/api/datasets/%s/upload/%s/%s", repo, revision, remotePath)
-	if err := uploadCandidate(ctx, client, uploadURL, token, candidate); err != nil {
+	commitURL := fmt.Sprintf("https://huggingface.co/api/datasets/%s/commit/%s?create_pr=1", repo, baseRevision)
+	pullRequestURL, err := commitCandidateAsPR(ctx, client, commitURL, token, remotePath, candidate)
+	if err != nil {
 		return ContributionSubmission{}, err
 	}
-	return ContributionSubmission{Repo: repo, Path: remotePath, Revision: revision}, nil
+	return ContributionSubmission{Repo: repo, Path: remotePath, BaseRevision: baseRevision, PullRequestURL: pullRequestURL}, nil
 }
 
-func uploadCandidate(ctx context.Context, client *http.Client, uploadURL, token string, candidate ContributionCandidate) error {
+// commitCandidateAsPR sends a single-file addition through Hugging Face's
+// NDJSON "create commit" API with create_pr=1, so the write lands as a pull
+// request rather than a direct commit to baseRevision. Returns the created
+// PR's URL from the response.
+func commitCandidateAsPR(ctx context.Context, client *http.Client, commitURL, token, remotePath string, candidate ContributionCandidate) (string, error) {
 	data, err := json.MarshalIndent(candidate, "", "  ")
 	if err != nil {
-		return fmt.Errorf("encode contribution candidate: %w", err)
+		return "", fmt.Errorf("encode contribution candidate: %w", err)
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, uploadURL, bytes.NewReader(data))
+	header, err := json.Marshal(map[string]any{
+		"key": "header",
+		"value": map[string]any{
+			"summary": "Add contribution candidate " + candidate.CandidateID,
+		},
+	})
 	if err != nil {
-		return fmt.Errorf("create upload request: %w", err)
+		return "", fmt.Errorf("encode commit header: %w", err)
+	}
+	fileOp, err := json.Marshal(map[string]any{
+		"key": "file",
+		"value": map[string]any{
+			"path":     remotePath,
+			"content":  base64.StdEncoding.EncodeToString(data),
+			"encoding": "base64",
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("encode commit file operation: %w", err)
+	}
+	body := append(append(header, '\n'), fileOp...)
+	body = append(body, '\n')
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, commitURL, bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("create commit request: %w", err)
 	}
 	request.Header.Set("Authorization", "Bearer "+token)
-	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Content-Type", "application/x-ndjson")
 	response, err := client.Do(request)
 	if err != nil {
-		return fmt.Errorf("upload contribution candidate: %w", err)
+		return "", fmt.Errorf("submit contribution candidate: %w", err)
 	}
 	defer response.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(response.Body, 64<<10))
+	responseBody, _ := io.ReadAll(io.LimitReader(response.Body, 64<<10))
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return fmt.Errorf("hugging face upload returned HTTP %d: %s", response.StatusCode, strings.TrimSpace(string(body)))
+		return "", fmt.Errorf("hugging face commit API returned HTTP %d: %s", response.StatusCode, strings.TrimSpace(string(responseBody)))
 	}
-	return nil
+	var result struct {
+		PullRequestURL string `json:"pullRequestUrl"`
+	}
+	if err := json.Unmarshal(responseBody, &result); err != nil || result.PullRequestURL == "" {
+		return "", fmt.Errorf("hugging face commit succeeded but did not report a pull request URL: %s", strings.TrimSpace(string(responseBody)))
+	}
+	return result.PullRequestURL, nil
 }
 
 func readVerifiedCandidate(path string) (ContributionCandidate, error) {
