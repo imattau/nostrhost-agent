@@ -16,3 +16,54 @@ func TestValidateRegistryRejectsMalformedHostConfiguration(t *testing.T) {
 		t.Fatal("operation without host-side argument validator accepted")
 	}
 }
+
+func TestNsiteReadsRegisteredAndWritesAbsent(t *testing.T) {
+	// Phase 3b: the read surface is available for observation; every nsite.*
+	// write is absent from the registry so a proposal for one is denied
+	// (unknown operation) in every autonomy level including autonomous.
+	registry := DefaultRegistry()
+	reads := []string{
+		"nsite.gateway.status",
+		"nsite.list",
+		"nsite.inspect",
+		"nsite.resolve",
+		"nsite.validate_manifest",
+		"nsite.reachability",
+		"nsite.publish.plan",
+	}
+	for _, name := range reads {
+		spec, ok := registry[name]
+		if !ok {
+			t.Fatalf("nsite read %q is not registered", name)
+		}
+		if spec.Risk != RiskRead {
+			t.Fatalf("nsite read %q has risk %d, want RiskRead", name, spec.Risk)
+		}
+		if spec.Capability != NsitesRead {
+			t.Fatalf("nsite read %q has capability %q, want nsites.read", name, spec.Capability)
+		}
+	}
+	writes := []string{
+		"nsite.publish",
+		"nsite.snapshot",
+		"nsite.mirror",
+		"nsite.register",
+		"nsite.unregister",
+		"nsite.gateway.enable",
+		"nsite.gateway.disable",
+		"nsite.gateway.configure",
+	}
+	for _, name := range writes {
+		if _, ok := registry[name]; ok {
+			t.Fatalf("nsite write %q must NOT be in the agent registry", name)
+		}
+	}
+	// an explicit proposal for a write must be denied even at autonomous level
+	policy := Policy{Level: Autonomous, Capabilities: map[Capability]bool{NsitesRead: true}}
+	for _, name := range writes {
+		result := EvaluateProposal(policy, registry, Proposal{Operation: name})
+		if result.Decision != DecisionDeny {
+			t.Fatalf("nsite write %q not denied at autonomous: %s", name, result.Decision)
+		}
+	}
+}

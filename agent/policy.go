@@ -33,6 +33,7 @@ const (
 	PackageUpdate  Capability = "package.update"
 	AppRestore     Capability = "app.restore"
 	FirewallWrite  Capability = "firewall.write"
+	NsitesRead     Capability = "nsites.read"
 )
 
 // Risk expresses the policy class of a registered operation. It is metadata
@@ -163,6 +164,17 @@ func DefaultRegistry() map[string]OperationSpec {
 		definedOperation(OperationSpec{Name: "package.upgrade", Description: "Upgrade one named application; owner approval is required.", Capability: PackageUpdate, Risk: RiskElevated, AutonomousAt: Autonomous, RequiresApproval: true}, map[string]string{"app": "string"}, nil),
 		definedOperation(OperationSpec{Name: "app.restore", Description: "Restore one application snapshot; owner approval is required.", Capability: AppRestore, Risk: RiskDestructive, AutonomousAt: Autonomous, RequiresApproval: true}, map[string]string{"app": "string", "snapshot": "string"}, nil),
 		definedOperation(OperationSpec{Name: "firewall.change", Description: "Change a firewall rule; owner approval is required.", Capability: FirewallWrite, Risk: RiskDestructive, AutonomousAt: Autonomous, RequiresApproval: true}, map[string]string{"action": "string", "port": "integer"}, map[string]string{"protocol": "string"}),
+		// NIP-5A nsites read surface (Phase 3b): read-only tools are available
+		// for observation; every nsite.* write is deliberately absent from the
+		// registry, so any proposal for one is denied (unknown operation) in
+		// every autonomy level including autonomous.
+		definedOperation(OperationSpec{Name: "nsite.gateway.status", Description: "Read the nsite gateway status (enabled, mode, domain, health).", Capability: NsitesRead, Risk: RiskRead, AutonomousAt: Maintain}, nil, nil),
+		definedOperation(OperationSpec{Name: "nsite.list", Description: "List registered nsite sites and the gateway mode.", Capability: NsitesRead, Risk: RiskRead, AutonomousAt: Maintain}, nil, nil),
+		definedOperation(OperationSpec{Name: "nsite.inspect", Description: "Read one registered nsite site record.", Capability: NsitesRead, Risk: RiskRead, AutonomousAt: Maintain}, map[string]string{"pubkey": "string"}, map[string]string{"d": "string"}),
+		definedOperation(OperationSpec{Name: "nsite.resolve", Description: "Fetch a site manifest from public relays (read only, bounded).", Capability: NsitesRead, Risk: RiskRead, AutonomousAt: Maintain}, map[string]string{"pubkey": "string"}, map[string]string{"label": "string", "d": "string"}),
+		definedOperation(OperationSpec{Name: "nsite.validate_manifest", Description: "Validate a candidate manifest event; no network.", Capability: NsitesRead, Risk: RiskRead, AutonomousAt: Maintain}, map[string]string{"event": "string"}, nil),
+		definedOperation(OperationSpec{Name: "nsite.reachability", Description: "Probe relay/server reachability (bounded).", Capability: NsitesRead, Risk: RiskRead, AutonomousAt: Maintain}, nil, map[string]string{"relays": "string", "servers": "string"}),
+		definedOperation(OperationSpec{Name: "nsite.publish.plan", Description: "Build an unsigned manifest + plan digest from an inventory or draft site.", Capability: NsitesRead, Risk: RiskRead, AutonomousAt: Maintain}, map[string]string{"pubkey": "string"}, map[string]string{"kind": "integer", "d": "string", "site": "string"}),
 	}
 	registry := make(map[string]OperationSpec, len(specs))
 	for _, spec := range specs {
