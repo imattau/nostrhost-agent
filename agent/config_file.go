@@ -13,18 +13,31 @@ import (
 const maxRuntimeConfigBytes = 256 * 1024
 
 type RuntimeFileConfig struct {
-	Relay               RelayFileConfig     `json:"relay"`
-	Inference           InferenceFileConfig `json:"inference,omitempty"`
-	Embeddings          EmbeddingFileConfig `json:"embeddings,omitempty"`
-	Policy              Policy              `json:"policy"`
-	ObservationQueries  []ObservationQuery  `json:"observation_queries"`
-	VerificationRules   []VerificationRule  `json:"verification_rules,omitempty"`
-	KnowledgeCorpusPath string              `json:"knowledge_corpus_path,omitempty"`
-	AuditPath           string              `json:"audit_path"`
-	Interval            string              `json:"interval,omitempty"`
-	RunImmediately      bool                `json:"run_immediately,omitempty"`
-	ListenForEvents     bool                `json:"listen_for_events,omitempty"`
-	EventLookback       string              `json:"event_lookback,omitempty"`
+	Relay               RelayFileConfig        `json:"relay"`
+	Inference           InferenceFileConfig    `json:"inference,omitempty"`
+	Embeddings          EmbeddingFileConfig    `json:"embeddings,omitempty"`
+	Policy              Policy                 `json:"policy"`
+	ObservationQueries  []ObservationQuery     `json:"observation_queries"`
+	VerificationRules   []VerificationRule     `json:"verification_rules,omitempty"`
+	KnowledgeCorpusPath string                 `json:"knowledge_corpus_path,omitempty"`
+	AuditPath           string                 `json:"audit_path"`
+	Interval            string                 `json:"interval,omitempty"`
+	RunImmediately      bool                   `json:"run_immediately,omitempty"`
+	ListenForEvents     bool                   `json:"listen_for_events,omitempty"`
+	EventLookback       string                 `json:"event_lookback,omitempty"`
+	Contribution        ContributionFileConfig `json:"contribution,omitempty"`
+}
+
+// ContributionFileConfig is the resident daemon's own, operator-set
+// contribution config. When Enabled, the daemon submits every completed
+// cycle as a Hugging Face pull request itself, with no per-cycle human
+// review -- see ContributionAutoSubmitter. Off by default.
+type ContributionFileConfig struct {
+	Enabled      bool   `json:"enabled,omitempty"`
+	DatasetRepo  string `json:"dataset_repo,omitempty"`
+	TokenPath    string `json:"token_path,omitempty"`
+	BaseRevision string `json:"base_revision,omitempty"`
+	StatePath    string `json:"state_path,omitempty"`
 }
 
 type RelayFileConfig struct {
@@ -110,6 +123,21 @@ func LoadRuntimeConfig(path string) (RuntimeConfig, error) {
 	embeddings := EmbeddingConfig{
 		BaseURL: config.Embeddings.BaseURL, Model: config.Embeddings.Model, APIKey: config.Embeddings.APIKey,
 	}
+	contribution := config.Contribution
+	if contribution.Enabled {
+		if !modelRepositoryPattern.MatchString(contribution.DatasetRepo) {
+			return RuntimeConfig{}, errors.New("contribution.dataset_repo must look like <owner>/<name> when contribution.enabled is true")
+		}
+		if contribution.TokenPath == "" {
+			contribution.TokenPath = "/etc/nostrhost-agent/hf_token"
+		}
+		if contribution.BaseRevision == "" {
+			contribution.BaseRevision = "main"
+		}
+		if contribution.StatePath == "" {
+			contribution.StatePath = "/var/lib/nostrhost-agent/contribution-submitted.jsonl"
+		}
+	}
 	return RuntimeConfig{
 		Relay: RelayTransportConfig{
 			RelayURL: config.Relay.RelayURL, AgentSecretKey: config.Relay.AgentSecretKey,
@@ -121,6 +149,7 @@ func LoadRuntimeConfig(path string) (RuntimeConfig, error) {
 		KnowledgeCorpusPath: config.KnowledgeCorpusPath, AuditPath: config.AuditPath,
 		Interval: interval, RunImmediately: config.RunImmediately,
 		ListenForEvents: config.ListenForEvents, EventLookback: eventLookback,
+		Contribution: contribution,
 	}, nil
 }
 

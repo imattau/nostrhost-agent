@@ -26,6 +26,7 @@ type RuntimeConfig struct {
 	Approvals           ApprovalGate
 	Verifier            Verifier
 	OnCycle             func(CycleTrace, error)
+	Contribution        ContributionFileConfig
 }
 
 // ResidentRuntime owns the resources needed by one configured resident agent.
@@ -176,9 +177,23 @@ func NewResidentRuntime(cfg RuntimeConfig) (*ResidentRuntime, error) {
 		Executor: executor, Approvals: cfg.Approvals, Verifier: verifier,
 		Audit: audit,
 	}
+	onCycle := cfg.OnCycle
+	if cfg.Contribution.Enabled {
+		submitter, err := NewContributionAutoSubmitter(cfg.Contribution)
+		if err != nil {
+			return nil, fmt.Errorf("initialize automatic contribution submitter: %w", err)
+		}
+		previous := onCycle
+		onCycle = func(trace CycleTrace, cycleErr error) {
+			if previous != nil {
+				previous(trace, cycleErr)
+			}
+			submitter.OnCycle(trace, cycleErr)
+		}
+	}
 	service := ResidentService{
 		Runner: runner, Interval: cfg.Interval, RunImmediately: cfg.RunImmediately,
-		Triggers: cfg.Triggers, OnCycle: cfg.OnCycle,
+		Triggers: cfg.Triggers, OnCycle: onCycle,
 	}
 	if err := service.validate(); err != nil {
 		return nil, fmt.Errorf("invalid resident runtime configuration: %w", err)

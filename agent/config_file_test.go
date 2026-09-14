@@ -78,6 +78,32 @@ func TestLoadRuntimeConfigRequiresPrivateRegularStrictJSON(t *testing.T) {
 	})
 }
 
+func TestLoadRuntimeConfigAppliesContributionDefaultsWhenEnabled(t *testing.T) {
+	withContribution := strings.Replace(validRuntimeConfigJSON,
+		`"embeddings":`,
+		`"contribution": {"enabled": true, "dataset_repo": "owner/dataset"}, "embeddings":`, 1)
+	config, err := LoadRuntimeConfig(writeRuntimeConfig(t, withContribution, 0o600))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !config.Contribution.Enabled || config.Contribution.DatasetRepo != "owner/dataset" {
+		t.Fatalf("contribution settings not parsed: %#v", config.Contribution)
+	}
+	if config.Contribution.TokenPath != "/etc/nostrhost-agent/hf_token" || config.Contribution.BaseRevision != "main" ||
+		config.Contribution.StatePath != "/var/lib/nostrhost-agent/contribution-submitted.jsonl" {
+		t.Fatalf("contribution defaults were not applied: %#v", config.Contribution)
+	}
+}
+
+func TestLoadRuntimeConfigRejectsEnabledContributionWithBadRepo(t *testing.T) {
+	badRepo := strings.Replace(validRuntimeConfigJSON,
+		`"embeddings":`,
+		`"contribution": {"enabled": true, "dataset_repo": "not-a-valid-repo"}, "embeddings":`, 1)
+	if _, err := LoadRuntimeConfig(writeRuntimeConfig(t, badRepo, 0o600)); err == nil {
+		t.Fatal("enabled contribution with a malformed dataset repo was accepted")
+	}
+}
+
 func TestLoadRuntimeConfigRejectsInvalidOrOversizedDurationsAndFiles(t *testing.T) {
 	invalidDuration := strings.Replace(validRuntimeConfigJSON, `"6h"`, `"six hours"`, 1)
 	if _, err := LoadRuntimeConfig(writeRuntimeConfig(t, invalidDuration, 0o600)); err == nil {
