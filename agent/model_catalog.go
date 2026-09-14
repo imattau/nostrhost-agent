@@ -326,6 +326,109 @@ func downloadVerified(ctx context.Context, client *http.Client, sourceURL, direc
 	return destination, nil
 }
 
+// InferenceRuntimeArtifact is a maintainer-curated, immutable llama.cpp CPU
+// build used to serve a catalogued GGUF model over its OpenAI-compatible
+// server. Pinned to an exact release tag and verified by size and SHA-256,
+// the same way ModelArtifact downloads are.
+type InferenceRuntimeArtifact struct {
+	ID                     string   `json:"id"`
+	Tag                    string   `json:"tag"`
+	AssetName              string   `json:"asset_name"`
+	ServerBinary           string   `json:"server_binary"`
+	SizeBytes              int64    `json:"size_bytes"`
+	SHA256                 string   `json:"sha256"`
+	SupportedOS            []string `json:"supported_os"`
+	SupportedArchitectures []string `json:"supported_architectures"`
+}
+
+var runtimeTagPattern = regexp.MustCompile(`^b[0-9]{1,7}$`)
+
+// InferenceRuntimeCatalog returns the single pinned llama.cpp CPU build
+// validated on the nostrhost-agent test VM (see docs/model-selection.md).
+func InferenceRuntimeCatalog() []InferenceRuntimeArtifact {
+	return []InferenceRuntimeArtifact{
+		{
+			ID: "llama-cpp-b10950-cpu", Tag: "b10950",
+			AssetName: "llama-b10950-bin-ubuntu-x64.tar.gz", ServerBinary: "llama-server",
+			SizeBytes: 16822383,
+			SHA256:    "db40ef24d13ab23d6fd486eae219f634edc5ed529c2c217e71b4ef0d4572417c",
+			SupportedOS: []string{"linux"}, SupportedArchitectures: []string{"amd64"},
+		},
+	}
+}
+
+func ValidateRuntimeCatalog(catalog []InferenceRuntimeArtifact) error {
+	if len(catalog) == 0 {
+		return errors.New("inference runtime catalog is empty")
+	}
+	ids := make(map[string]bool, len(catalog))
+	for _, artifact := range catalog {
+		if artifact.ID == "" || ids[artifact.ID] {
+			return errors.New("inference runtime catalog contains a missing or duplicate id")
+		}
+		ids[artifact.ID] = true
+		if !runtimeTagPattern.MatchString(artifact.Tag) || !sha256Pattern.MatchString(artifact.SHA256) {
+			return fmt.Errorf("runtime %q must use a pinned release tag and SHA-256", artifact.ID)
+		}
+		if artifact.SizeBytes <= 0 || artifact.SizeBytes > maxModelDownload || artifact.AssetName == "" ||
+			filepath.Base(artifact.AssetName) != artifact.AssetName || artifact.ServerBinary == "" {
+			return fmt.Errorf("runtime %q has invalid artifact metadata", artifact.ID)
+		}
+	}
+	return nil
+}
+
+func FindRuntime(catalog []InferenceRuntimeArtifact, id string) (InferenceRuntimeArtifact, bool) {
+	for _, artifact := range catalog {
+		if artifact.ID == id {
+			return artifact, true
+		}
+	}
+	return InferenceRuntimeArtifact{}, false
+}
+
+// DownloadRuntime fetches and verifies a pinned llama.cpp release tarball from
+// its GitHub release, but does not unpack it — the caller (nostrhost-agent-model
+// runtime download) does that after this returns, so the verified archive is
+// never extracted from an unverified byte stream.
+func DownloadRuntime(ctx context.Context, artifact InferenceRuntimeArtifact, profile HostCapabilities, directory string) (string, error) {
+	if err := ValidateRuntimeCatalog([]InferenceRuntimeArtifact{artifact}); err != nil {
+		return "", err
+	}
+	if !containsString(artifact.SupportedOS, profile.OS) || !containsString(artifact.SupportedArchitectures, profile.Architecture) {
+		return "", errors.New("inference runtime artifact does not support this host platform")
+	}
+	dirInfo, err := os.Lstat(directory)
+	if err != nil {
+		return "", fmt.Errorf("inspect runtime directory: %w", err)
+	}
+	if dirInfo.Mode()&os.ModeSymlink != 0 || !dirInfo.IsDir() {
+		return "", errors.New("runtime directory must be a real directory, not a symlink")
+	}
+	free, err := diskFree(directory)
+	if err != nil {
+		return "", fmt.Errorf("inspect runtime directory free space: %w", err)
+	}
+	if free < uint64(artifact.SizeBytes)*2 {
+		return "", errors.New("runtime directory does not have enough free space to download and unpack")
+	}
+	sourceURL := fmt.Sprintf("https://github.com/ggml-org/llama.cpp/releases/download/%s/%s", artifact.Tag, artifact.AssetName)
+	parsed, err := url.Parse(sourceURL)
+	if err != nil || parsed.Scheme != "https" || parsed.Host != "github.com" {
+		return "", errors.New("catalog runtime URL is not an approved HTTPS GitHub URL")
+	}
+	client := &http.Client{
+		Timeout: 0,
+		CheckRedirect: func(request *http.Request, via []*http.Request) error {
+			if len(via) >= 8 || request.URL.Scheme != "https" || request.URL.User != nil {
+				return errors.New("runtime download redirect was refused")
+			}
+			return nil
+		},
+	}
+	return downloadVerified(ctx, client, parsed.String(), directory, artifact.AssetName, artifact.SizeBytes, artifact.SHA256)
+}
+
 func containsString(values []string, target string) bool {
 	for _, value := range values {
 		if value == target {

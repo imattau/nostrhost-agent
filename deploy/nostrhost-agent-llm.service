@@ -1,0 +1,30 @@
+[Unit]
+Description=Local inference server for nostrhost-agent (evaluation-only models only)
+ConditionPathExists=/etc/nostrhost-agent/llm.env
+After=network.target
+
+[Service]
+Type=simple
+User=nostrhost-agent
+Group=nostrhost-agent
+EnvironmentFile=/etc/nostrhost-agent/llm.env
+ExecStart=/bin/sh -c '"$RUNTIME_SERVER_PATH" --model "$MODEL_PATH" --host 127.0.0.1 --port 18080 --ctx-size 4096 --threads 4 --parallel 1 --jinja'
+Restart=on-failure
+RestartSec=5s
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+LockPersonality=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadOnlyPaths=/var/lib/nostrhost-agent/models /var/lib/nostrhost-agent/runtime
+
+[Install]
+WantedBy=multi-user.target

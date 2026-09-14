@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -62,63 +63,75 @@ type ContributionProposal struct {
 	Verified  *bool          `json:"verified,omitempty"`
 }
 
+// scanJournalLatest reads a journal without opening it for writing or
+// repairing an interrupted tail, and returns the latest record per cycle ID.
+func scanJournalLatest(path string) (map[string]CycleTrace, error) {
+	before, err := os.Lstat(path)
+	if err != nil {
+		return nil, fmt.Errorf("inspect audit journal: %w", err)
+	}
+	if before.Mode()&os.ModeSymlink != 0 || !before.Mode().IsRegular() {
+		return nil, errors.New("audit journal must be a regular file, not a symlink")
+	}
+	if before.Mode().Perm()&0o077 != 0 {
+		return nil, errors.New("audit journal has group or other permissions; secure it to mode 0600 first")
+	}
+	if before.Size() > maxContributionJournal {
+		return nil, errors.New("audit journal exceeds the 256 MiB export limit")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open audit journal read-only: %w", err)
+	}
+	defer file.Close()
+	after, err := file.Stat()
+	if err != nil || !after.Mode().IsRegular() || !os.SameFile(before, after) {
+		return nil, errors.New("audit journal changed while it was being opened")
+	}
+	if after.Size() > maxContributionJournal {
+		return nil, errors.New("audit journal exceeds the 256 MiB export limit")
+	}
+	if after.Size() == 0 {
+		return nil, errors.New("audit journal is empty")
+	}
+	var lastByte [1]byte
+	if _, err := file.ReadAt(lastByte[:], after.Size()-1); err != nil || lastByte[0] != '\n' {
+		return nil, errors.New("audit journal has an incomplete final record; export will not repair it")
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return nil, fmt.Errorf("read audit journal: %w", err)
+	}
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 64*1024), maxAuditRecordBytes+1)
+	latest := make(map[string]CycleTrace)
+	for scanner.Scan() {
+		var trace CycleTrace
+		if err := json.Unmarshal(scanner.Bytes(), &trace); err != nil || trace.ID == "" {
+			return nil, errors.New("audit journal contains an invalid record")
+		}
+		latest[trace.ID] = trace
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("read audit journal: %w", err)
+	}
+	return latest, nil
+}
+
+func isEligibleForExport(trace CycleTrace) bool {
+	return !trace.FinishedAt.IsZero() && trace.PlanningCompleted && len(trace.AvailableOperations) > 0
+}
+
 // ReadContributionCycle reads a journal without opening it for writing or
 // repairing an interrupted tail. It returns the latest snapshot of cycleID.
 func ReadContributionCycle(path, cycleID string) (CycleTrace, error) {
 	if strings.TrimSpace(cycleID) == "" {
 		return CycleTrace{}, errors.New("cycle id is required")
 	}
-	before, err := os.Lstat(path)
+	latest, err := scanJournalLatest(path)
 	if err != nil {
-		return CycleTrace{}, fmt.Errorf("inspect audit journal: %w", err)
+		return CycleTrace{}, err
 	}
-	if before.Mode()&os.ModeSymlink != 0 || !before.Mode().IsRegular() {
-		return CycleTrace{}, errors.New("audit journal must be a regular file, not a symlink")
-	}
-	if before.Mode().Perm()&0o077 != 0 {
-		return CycleTrace{}, errors.New("audit journal has group or other permissions; secure it to mode 0600 first")
-	}
-	if before.Size() > maxContributionJournal {
-		return CycleTrace{}, errors.New("audit journal exceeds the 256 MiB export limit")
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		return CycleTrace{}, fmt.Errorf("open audit journal read-only: %w", err)
-	}
-	defer file.Close()
-	after, err := file.Stat()
-	if err != nil || !after.Mode().IsRegular() || !os.SameFile(before, after) {
-		return CycleTrace{}, errors.New("audit journal changed while it was being opened")
-	}
-	if after.Size() > maxContributionJournal {
-		return CycleTrace{}, errors.New("audit journal exceeds the 256 MiB export limit")
-	}
-	if after.Size() == 0 {
-		return CycleTrace{}, errors.New("audit journal is empty")
-	}
-	var lastByte [1]byte
-	if _, err := file.ReadAt(lastByte[:], after.Size()-1); err != nil || lastByte[0] != '\n' {
-		return CycleTrace{}, errors.New("audit journal has an incomplete final record; export will not repair it")
-	}
-	if _, err := file.Seek(0, io.SeekStart); err != nil {
-		return CycleTrace{}, fmt.Errorf("read audit journal: %w", err)
-	}
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 64*1024), maxAuditRecordBytes+1)
-	var selected CycleTrace
-	found := false
-	for scanner.Scan() {
-		var trace CycleTrace
-		if err := json.Unmarshal(scanner.Bytes(), &trace); err != nil || trace.ID == "" {
-			return CycleTrace{}, errors.New("audit journal contains an invalid record")
-		}
-		if trace.ID == cycleID {
-			selected, found = trace, true
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		return CycleTrace{}, fmt.Errorf("read audit journal: %w", err)
-	}
+	selected, found := latest[cycleID]
 	if !found {
 		return CycleTrace{}, errors.New("selected cycle id was not found in the audit journal")
 	}
@@ -129,6 +142,43 @@ func ReadContributionCycle(path, cycleID string) (CycleTrace, error) {
 		return CycleTrace{}, errors.New("selected cycle is missing its model-visible operation schemas")
 	}
 	return selected, nil
+}
+
+// ContributionCycleSummary is a non-sensitive index entry for choosing a
+// cycle to export — no observation or proposal content, just enough to pick.
+type ContributionCycleSummary struct {
+	CycleID     string `json:"cycle_id"`
+	FinishedAt  string `json:"finished_at"`
+	CycleResult string `json:"cycle_result"`
+	Decision    string `json:"decision"`
+}
+
+// ListExportableCycles reads the journal read-only and reports the finalized,
+// export-eligible cycles (the same eligibility ReadContributionCycle checks).
+func ListExportableCycles(path string) ([]ContributionCycleSummary, error) {
+	latest, err := scanJournalLatest(path)
+	if err != nil {
+		return nil, err
+	}
+	summaries := make([]ContributionCycleSummary, 0, len(latest))
+	for _, trace := range latest {
+		if !isEligibleForExport(trace) {
+			continue
+		}
+		decision := "no_call"
+		if len(trace.Proposals) > 0 {
+			decision = trace.Proposals[len(trace.Proposals)-1].Proposal.Operation
+			if decision == "" {
+				decision = "unknown"
+			}
+		}
+		summaries = append(summaries, ContributionCycleSummary{
+			CycleID: trace.ID, FinishedAt: trace.FinishedAt.Format("2006-01-02T15:04:05Z07:00"),
+			CycleResult: safeCycleResult(trace.Result), Decision: decision,
+		})
+	}
+	sort.Slice(summaries, func(i, j int) bool { return summaries[i].FinishedAt > summaries[j].FinishedAt })
+	return summaries, nil
 }
 
 // BuildContributionCandidate creates a sanitized, model-neutral review

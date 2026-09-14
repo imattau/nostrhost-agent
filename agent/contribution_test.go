@@ -180,3 +180,35 @@ func TestWriteContributionCandidateIsPrivateAndNeverOverwrites(t *testing.T) {
 		t.Fatal("existing output overwritten")
 	}
 }
+
+func TestListExportableCyclesOnlyReturnsFinalizedCyclesWithoutContent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.jsonl")
+	incomplete := exportableTrace()
+	incomplete.ID = "cycle-incomplete"
+	incomplete.FinishedAt = time.Time{}
+	incomplete.PlanningCompleted = false
+	finalized := exportableTrace()
+	finalized.ID = "cycle-finalized"
+	incompleteJSON, _ := json.Marshal(incomplete)
+	finalizedJSON, _ := json.Marshal(finalized)
+	contents := append(append(incompleteJSON, '\n'), append(finalizedJSON, '\n')...)
+	if err := os.WriteFile(path, contents, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	summaries, err := ListExportableCycles(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(summaries) != 1 || summaries[0].CycleID != "cycle-finalized" {
+		t.Fatalf("expected exactly the finalized cycle, got %#v", summaries)
+	}
+	if summaries[0].Decision != "service.restart" || summaries[0].CycleResult != "verified" {
+		t.Fatalf("unexpected summary content: %#v", summaries[0])
+	}
+	encoded, _ := json.Marshal(summaries)
+	for _, forbidden := range []string{"private-service", "10.0.0.8", "admin@example.com", "incident.md"} {
+		if strings.Contains(string(encoded), forbidden) {
+			t.Errorf("cycle summary leaked observation/proposal content: %q in %s", forbidden, encoded)
+		}
+	}
+}
