@@ -67,3 +67,18 @@ func TestAuditSanitizesProposalObservationsAndResults(t *testing.T) {
 		t.Fatalf("structured result was not sanitized: %#v", got)
 	}
 }
+
+func TestAuditSanitizesPreviouslyMissedSecretKeyNames(t *testing.T) {
+	for _, key := range []string{
+		"secret_key", "signing_key", "encryption_key", "credentials",
+		"passwordHash", "client_secret", "db_password", "API_KEY",
+	} {
+		got := sanitizeMap(map[string]any{key: "sensitive", "pubkey": "keep"}, nil)
+		if got[key] != redactedValue {
+			t.Fatalf("key %q was not redacted: %#v", key, got)
+		}
+		if got["pubkey"] != "keep" {
+			t.Fatalf("benign key was over-redacted: %#v", got)
+		}
+	}
+}

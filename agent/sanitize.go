@@ -67,8 +67,18 @@ func normalizeKey(value string) string {
 
 func isSensitiveKey(key string) bool {
 	normalized := normalizeKey(key)
-	for _, marker := range []string{"password", "passwd", "token", "secret", "private_key", "api_key", "authorization", "nsec"} {
-		if normalized == marker || strings.HasSuffix(normalized, "_"+marker) {
+	// High-signal markers only (no bare "key"/"auth", which would redact
+	// benign identifiers like pubkey). `compact` (underscores removed) lets
+	// the Contains check catch camelCase/underscore spellings alike
+	// (passwordHash -> passwordhash, signing_key -> signingkey); a little
+	// over-redaction is the right trade-off for an audit-at-rest redactor.
+	compact := strings.ReplaceAll(normalized, "_", "")
+	markers := []string{
+		"password", "passwd", "token", "secret", "privatekey", "apikey",
+		"authorization", "nsec", "credential", "signingkey", "encryptionkey",
+	}
+	for _, marker := range markers {
+		if normalized == marker || strings.HasSuffix(normalized, "_"+marker) || strings.Contains(compact, marker) {
 			return true
 		}
 	}
