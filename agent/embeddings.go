@@ -9,7 +9,6 @@ import (
 	"io"
 	"math"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -176,8 +175,8 @@ func (e *OpenAICompatibleEmbedder) embedBatch(ctx context.Context, texts []strin
 }
 
 func localEmbeddingsEndpoint(base string) (string, error) {
-	parsed, err := url.Parse(base)
-	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || !isLoopbackHost(parsed.Hostname()) || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+	parsed, err := validateLocalEndpoint(base, "http", "https")
+	if err != nil {
 		return "", errors.New("embedding endpoint must use http/https on a loopback host without embedded credentials")
 	}
 	path := strings.TrimRight(parsed.Path, "/")
