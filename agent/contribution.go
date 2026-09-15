@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -66,31 +67,11 @@ type ContributionProposal struct {
 // scanJournalLatest reads a journal without opening it for writing or
 // repairing an interrupted tail, and returns the latest record per cycle ID.
 func scanJournalLatest(path string) (map[string]CycleTrace, error) {
-	before, err := os.Lstat(path)
+	file, after, err := openVerifiedFile(path, WithRejectGroupOtherPerms(), WithMaxOpenSize(maxContributionJournal))
 	if err != nil {
 		return nil, fmt.Errorf("inspect audit journal: %w", err)
 	}
-	if before.Mode()&os.ModeSymlink != 0 || !before.Mode().IsRegular() {
-		return nil, errors.New("audit journal must be a regular file, not a symlink")
-	}
-	if before.Mode().Perm()&0o077 != 0 {
-		return nil, errors.New("audit journal has group or other permissions; secure it to mode 0600 first")
-	}
-	if before.Size() > maxContributionJournal {
-		return nil, errors.New("audit journal exceeds the 256 MiB export limit")
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("open audit journal read-only: %w", err)
-	}
 	defer file.Close()
-	after, err := file.Stat()
-	if err != nil || !after.Mode().IsRegular() || !os.SameFile(before, after) {
-		return nil, errors.New("audit journal changed while it was being opened")
-	}
-	if after.Size() > maxContributionJournal {
-		return nil, errors.New("audit journal exceeds the 256 MiB export limit")
-	}
 	if after.Size() == 0 {
 		return nil, errors.New("audit journal is empty")
 	}
@@ -256,30 +237,25 @@ func WriteContributionCandidate(path string, candidate ContributionCandidate) er
 		return fmt.Errorf("encode contribution candidate: %w", err)
 	}
 	data = append(data, '\n')
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if err != nil {
-		return fmt.Errorf("create contribution candidate without overwriting: %w", err)
-	}
-	created := true
-	defer func() {
-		file.Close()
-		if created {
-			os.Remove(path)
+	directory := filepath.Dir(path)
+	write := func(file *os.File) error {
+		if _, err := file.Write(data); err != nil {
+			return fmt.Errorf("write contribution candidate: %w", err)
 		}
-	}()
-	if err := file.Chmod(0o600); err != nil {
-		return fmt.Errorf("secure contribution candidate: %w", err)
+		return nil
 	}
-	if _, err := file.Write(data); err != nil {
-		return fmt.Errorf("write contribution candidate: %w", err)
+	publish := func(tempPath string) error {
+		// os.Link fails if path already exists, the same
+		// never-overwrite guarantee os.O_EXCL gave the previous
+		// direct-write implementation.
+		if err := os.Link(tempPath, path); err != nil {
+			return fmt.Errorf("create contribution candidate without overwriting: %w", err)
+		}
+		return nil
 	}
-	if err := file.Sync(); err != nil {
-		return fmt.Errorf("sync contribution candidate: %w", err)
+	if err := writeFileAtomic0600(directory, ".nostrhost-agent-candidate-*", write, publish); err != nil {
+		return err
 	}
-	if err := file.Close(); err != nil {
-		return fmt.Errorf("close contribution candidate: %w", err)
-	}
-	created = false
 	return nil
 }
 
@@ -376,28 +352,13 @@ func isContributionIdentityKey(key string) bool {
 }
 
 func safeCycleResult(value string) string {
-	switch value {
-	case "completed", "needs_attention", "approval_required", "proposal_ready", "verified", "proposal_limit_reached", "interrupted":
-		return value
-	default:
-		return "unknown"
-	}
+	return safeEnum(value, "completed", "needs_attention", "approval_required", "proposal_ready", "verified", "proposal_limit_reached", "interrupted")
 }
 
 func safePolicyDecision(value Decision) string {
-	switch value {
-	case DecisionObserveOnly, DecisionProposalOnly, DecisionApproval, DecisionAllow, DecisionDeny:
-		return string(value)
-	default:
-		return "unknown"
-	}
+	return safeEnum(value, DecisionObserveOnly, DecisionProposalOnly, DecisionApproval, DecisionAllow, DecisionDeny)
 }
 
 func safeProposalOutcome(value string) string {
-	switch value {
-	case "deny", "allow", "observe_only", "proposal_only", "approval_required", "approval_unavailable", "approval_delegated", "approval_check_failed", "approval_denied", "executor_unavailable", "executing", "execution_failed", "verification_unavailable", "verification_failed", "not_verified", "verified", "invalid_arguments":
-		return value
-	default:
-		return "unknown"
-	}
+	return safeEnum(value, "deny", "allow", "observe_only", "proposal_only", "approval_required", "approval_unavailable", "approval_delegated", "approval_check_failed", "approval_denied", "executor_unavailable", "executing", "execution_failed", "verification_unavailable", "verification_failed", "not_verified", "verified", "invalid_arguments")
 }

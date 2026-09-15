@@ -31,8 +31,10 @@ type JSONLAuditSink struct {
 
 func OpenJSONLAuditSink(path string) (*JSONLAuditSink, error) {
 	before, statErr := os.Lstat(path)
-	if statErr == nil && (before.Mode()&os.ModeSymlink != 0 || !before.Mode().IsRegular()) {
-		return nil, errors.New("audit journal must be a regular file, not a symlink")
+	if statErr == nil {
+		if err := verifyRegularFileMode(before, openFileOptions{}); err != nil {
+			return nil, err
+		}
 	}
 	if statErr != nil && !os.IsNotExist(statErr) {
 		return nil, fmt.Errorf("inspect audit journal: %w", statErr)
@@ -53,6 +55,9 @@ func OpenJSONLAuditSink(path string) (*JSONLAuditSink, error) {
 		return closeOnError(errors.New("audit journal changed while it was being opened"))
 	}
 	if statErr != nil {
+		// path did not exist a moment ago: re-Lstat it now (the TOCTOU
+		// guard for the create case) and confirm what we just opened is
+		// the same file, not a symlink someone raced into place.
 		current, err := os.Lstat(path)
 		if err != nil || current.Mode()&os.ModeSymlink != 0 || !os.SameFile(current, after) {
 			return closeOnError(errors.New("audit journal changed while it was being created"))

@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 )
 
@@ -60,11 +59,7 @@ func SubmitContributionCandidate(ctx context.Context, client *http.Client, candi
 	if err != nil {
 		return ContributionSubmission{}, err
 	}
-	token, err := readSecretFile(tokenPath)
-	if err != nil {
-		return ContributionSubmission{}, err
-	}
-	pullRequestURL, err := commitCandidateAsPR(ctx, client, defaultHubBaseURL, repo, baseRevision, token, candidate)
+	pullRequestURL, err := submitCandidatePR(ctx, client, defaultHubBaseURL, tokenPath, repo, baseRevision, candidate)
 	if err != nil {
 		return ContributionSubmission{}, err
 	}
@@ -173,19 +168,14 @@ func fetchExistingDatasetFile(ctx context.Context, client *http.Client, hubBaseU
 }
 
 func readVerifiedCandidate(path string) (ContributionCandidate, error) {
-	info, err := os.Lstat(path)
+	file, _, err := openVerifiedFile(path, WithMaxOpenSize(maxContributionCandidateBytes))
 	if err != nil {
 		return ContributionCandidate{}, fmt.Errorf("inspect contribution candidate: %w", err)
 	}
-	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-		return ContributionCandidate{}, errors.New("contribution candidate must be a regular file, not a symlink")
-	}
-	if info.Size() > maxContributionCandidateBytes {
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, maxContributionCandidateBytes+1))
+	if err != nil || int64(len(data)) > maxContributionCandidateBytes {
 		return ContributionCandidate{}, errors.New("contribution candidate is larger than expected")
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return ContributionCandidate{}, fmt.Errorf("read contribution candidate: %w", err)
 	}
 	var candidate ContributionCandidate
 	if err := json.Unmarshal(data, &candidate); err != nil {
@@ -197,24 +187,38 @@ func readVerifiedCandidate(path string) (ContributionCandidate, error) {
 	return candidate, nil
 }
 
+// maxSecretFileBytes bounds how much of a token/secret file this process
+// will hold in memory. Legitimate tokens are short; this is a defense-in-
+// depth cap, not a real-world limit.
+const maxSecretFileBytes = 64 * 1024
+
 func readSecretFile(path string) (string, error) {
-	info, err := os.Lstat(path)
+	file, _, err := openVerifiedFile(path, WithRejectGroupOtherPerms(), WithMaxOpenSize(maxSecretFileBytes))
 	if err != nil {
 		return "", fmt.Errorf("inspect token file: %w", err)
 	}
-	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-		return "", errors.New("token file must be a regular file, not a symlink")
-	}
-	if info.Mode().Perm()&0o077 != 0 {
-		return "", errors.New("token file has group or other permissions; secure it to mode 0600 first")
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return "", fmt.Errorf("read token file: %w", err)
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, maxSecretFileBytes+1))
+	if err != nil || len(data) > maxSecretFileBytes {
+		return "", errors.New("token file is larger than expected")
 	}
 	token := strings.TrimSpace(string(data))
 	if token == "" {
 		return "", errors.New("token file is empty")
 	}
 	return token, nil
+}
+
+// submitCandidatePR reads the operator-configured Hugging Face token from
+// tokenPath and submits candidate as a pull request against repo. This is
+// the shared "read secret, call the Hub commit API" sequence used by both
+// the manual (SubmitContributionCandidate) and automatic
+// (ContributionAutoSubmitter) submission paths -- the only difference
+// between them is how the caller builds ctx.
+func submitCandidatePR(ctx context.Context, client *http.Client, hubBaseURL, tokenPath, repo, baseRevision string, candidate ContributionCandidate) (string, error) {
+	token, err := readSecretFile(tokenPath)
+	if err != nil {
+		return "", err
+	}
+	return commitCandidateAsPR(ctx, client, hubBaseURL, repo, baseRevision, token, candidate)
 }

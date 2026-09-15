@@ -104,14 +104,9 @@ func (s *ContributionAutoSubmitter) OnCycle(trace CycleTrace, cycleErr error) {
 		log.Printf("nostrhost-agent: automatic contribution skipped for cycle %s: %v", trace.ID, err)
 		return
 	}
-	token, err := readSecretFile(s.Config.TokenPath)
-	if err != nil {
-		log.Printf("nostrhost-agent: automatic contribution skipped, no usable token: %v", err)
-		return
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	prURL, err := commitCandidateAsPR(ctx, s.Client, s.hubBaseURL, s.Config.DatasetRepo, s.Config.BaseRevision, token, candidate)
+	prURL, err := submitCandidatePR(ctx, s.Client, s.hubBaseURL, s.Config.TokenPath, s.Config.DatasetRepo, s.Config.BaseRevision, candidate)
 	if err != nil {
 		log.Printf("nostrhost-agent: automatic contribution failed for cycle %s: %v", trace.ID, err)
 		return
