@@ -177,8 +177,7 @@ func verifyExecutionResultEvent(event *nostr.Event, requestID, trustedServerKey 
 }
 
 func validateRelayTransportConfig(cfg RelayTransportConfig) error {
-	parsed, err := url.Parse(cfg.RelayURL)
-	if err != nil || (parsed.Scheme != "ws" && parsed.Scheme != "wss") || !isLoopbackHost(parsed.Hostname()) || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+	if _, err := validateLocalEndpoint(cfg.RelayURL, "ws", "wss"); err != nil {
 		return errors.New("control relay URL must use ws/wss and a loopback host")
 	}
 	if !nostr.IsValid32ByteHex(cfg.AgentSecretKey) {
@@ -202,6 +201,32 @@ func isLoopbackHost(host string) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
+}
+
+// validateLocalEndpoint parses raw and confirms it is a URL that can only
+// ever reach a loopback address over one of allowedSchemes, with no
+// embedded credentials and no query or fragment component that could carry
+// hidden destination or credential material. This is the shared SSRF guard
+// for every local (embedding, inference, control relay) endpoint the agent
+// is configured to dial; callers must not accept a URL that fails this
+// check under any circumstance. On success it returns the parsed URL so
+// callers may inspect or rewrite its path.
+func validateLocalEndpoint(raw string, allowedSchemes ...string) (*url.URL, error) {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return nil, errors.New("endpoint URL is invalid")
+	}
+	schemeAllowed := false
+	for _, scheme := range allowedSchemes {
+		if parsed.Scheme == scheme {
+			schemeAllowed = true
+			break
+		}
+	}
+	if !schemeAllowed || !isLoopbackHost(parsed.Hostname()) || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return nil, errors.New("endpoint must use an allowed scheme on a loopback host without embedded credentials")
+	}
+	return parsed, nil
 }
 
 func (t *RelayOperationTransport) Close() {

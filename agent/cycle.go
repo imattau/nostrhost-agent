@@ -214,9 +214,8 @@ func (r CycleRunner) Run(ctx context.Context, request CycleRequest) (CycleTrace,
 			if r.Approvals == nil {
 				delegated, ok := r.Executor.(ApprovalChainExecutor)
 				if !ok || !delegated.UsesAuthoritativeApprovalChain() {
-					trace.Proposals[index].Outcome = "approval_unavailable"
-					if err := r.save(ctx, trace); err != nil {
-						return trace, fmt.Errorf("persist approval requirement: %w", err)
+					if err := r.recordOutcome(ctx, trace, index, "approval_unavailable", "persist approval requirement"); err != nil {
+						return trace, err
 					}
 					continue
 				}
@@ -227,16 +226,14 @@ func (r CycleRunner) Run(ctx context.Context, request CycleRequest) (CycleTrace,
 			} else {
 				approved, approvalErr := r.Approvals.Approve(ctx, proposal, result)
 				if approvalErr != nil {
-					trace.Proposals[index].Outcome = "approval_check_failed"
-					if err := r.save(ctx, trace); err != nil {
-						return trace, fmt.Errorf("persist approval failure: %w", err)
+					if err := r.recordOutcome(ctx, trace, index, "approval_check_failed", "persist approval failure"); err != nil {
+						return trace, err
 					}
 					continue
 				}
 				if !approved {
-					trace.Proposals[index].Outcome = "approval_denied"
-					if err := r.save(ctx, trace); err != nil {
-						return trace, fmt.Errorf("persist approval denial: %w", err)
+					if err := r.recordOutcome(ctx, trace, index, "approval_denied", "persist approval denial"); err != nil {
+						return trace, err
 					}
 					continue
 				}
@@ -244,9 +241,8 @@ func (r CycleRunner) Run(ctx context.Context, request CycleRequest) (CycleTrace,
 		}
 		spec, ok := r.Registry[proposal.Operation]
 		if !ok || r.Executor == nil {
-			trace.Proposals[index].Outcome = "executor_unavailable"
-			if err := r.save(ctx, trace); err != nil {
-				return trace, fmt.Errorf("persist executor availability: %w", err)
+			if err := r.recordOutcome(ctx, trace, index, "executor_unavailable", "persist executor availability"); err != nil {
+				return trace, err
 			}
 			continue
 		}
@@ -256,17 +252,15 @@ func (r CycleRunner) Run(ctx context.Context, request CycleRequest) (CycleTrace,
 		}
 		operationResult, executeErr := r.Executor.Execute(ctx, spec, proposal.Args)
 		if executeErr != nil {
-			trace.Proposals[index].Outcome = "execution_failed"
-			if err := r.save(ctx, trace); err != nil {
-				return trace, fmt.Errorf("persist execution failure: %w", err)
+			if err := r.recordOutcome(ctx, trace, index, "execution_failed", "persist execution failure"); err != nil {
+				return trace, err
 			}
 			continue
 		}
 		trace.Proposals[index].Result = sanitizeMap(operationResult, nil)
 		if r.Verifier == nil {
-			trace.Proposals[index].Outcome = "verification_unavailable"
-			if err := r.save(ctx, trace); err != nil {
-				return trace, fmt.Errorf("persist verification requirement: %w", err)
+			if err := r.recordOutcome(ctx, trace, index, "verification_unavailable", "persist verification requirement"); err != nil {
+				return trace, err
 			}
 			continue
 		}
@@ -343,6 +337,18 @@ func (r CycleRunner) finish(ctx context.Context, trace CycleTrace, now func() ti
 
 func (r CycleRunner) save(ctx context.Context, trace CycleTrace) error {
 	return r.Audit.Save(ctx, trace)
+}
+
+// recordOutcome sets the outcome for the proposal at index and persists the
+// trace, wrapping any persistence failure with saveErrMsg. Every call site in
+// the approval/execution/verification pipeline continues to the next
+// proposal on success, so callers only need to check the returned error.
+func (r CycleRunner) recordOutcome(ctx context.Context, trace CycleTrace, index int, outcome, saveErrMsg string) error {
+	trace.Proposals[index].Outcome = outcome
+	if err := r.save(ctx, trace); err != nil {
+		return fmt.Errorf("%s: %w", saveErrMsg, err)
+	}
+	return nil
 }
 
 func sortedCapabilities(capabilities map[Capability]bool) []Capability {
