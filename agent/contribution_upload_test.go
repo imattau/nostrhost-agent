@@ -47,13 +47,19 @@ func TestCommitCandidateAsPRSendsOneNDJSONCommitAndReturnsPRURL(t *testing.T) {
 		t.Fatal(err)
 	}
 	requests := 0
-	var gotAuth, gotPath, gotContentType string
+	var gotAuth, gotContentType string
+	var gotCommitPath bool
 	var gotLines []map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests++
+		if r.Method == http.MethodGet {
+			// No prior contributions file yet.
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
 		gotAuth = r.Header.Get("Authorization")
-		gotPath = r.URL.Path
 		gotContentType = r.Header.Get("Content-Type")
+		gotCommitPath = strings.Contains(r.URL.Path, "/commit/")
 		body, _ := io.ReadAll(r.Body)
 		for _, line := range strings.Split(strings.TrimSpace(string(body)), "\n") {
 			var decoded map[string]any
@@ -66,13 +72,12 @@ func TestCommitCandidateAsPRSendsOneNDJSONCommitAndReturnsPRURL(t *testing.T) {
 	}))
 	defer server.Close()
 
-	commitURL := server.URL + "/api/datasets/owner/dataset/commit/main?create_pr=1"
-	prURL, err := commitCandidateAsPR(context.Background(), server.Client(), commitURL, "hf_testtoken", candidate.CandidateID+".json", candidate)
+	prURL, err := commitCandidateAsPR(context.Background(), server.Client(), server.URL, "owner/dataset", "main", "hf_testtoken", candidate)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if requests != 1 {
-		t.Fatalf("expected exactly one commit request, got %d", requests)
+	if requests != 2 {
+		t.Fatalf("expected one fetch of the existing shared file plus one commit request, got %d", requests)
 	}
 	if gotAuth != "Bearer hf_testtoken" {
 		t.Fatalf("token not forwarded correctly: %q", gotAuth)
@@ -80,8 +85,8 @@ func TestCommitCandidateAsPRSendsOneNDJSONCommitAndReturnsPRURL(t *testing.T) {
 	if gotContentType != "application/x-ndjson" {
 		t.Fatalf("unexpected content type: %q", gotContentType)
 	}
-	if gotPath == "" {
-		t.Fatal("request never reached the stub server")
+	if !gotCommitPath {
+		t.Fatal("commit request never reached the stub server")
 	}
 	if prURL != "https://huggingface.co/datasets/owner/dataset/discussions/1" {
 		t.Fatalf("pull request URL not parsed from response: %q", prURL)
@@ -90,16 +95,77 @@ func TestCommitCandidateAsPRSendsOneNDJSONCommitAndReturnsPRURL(t *testing.T) {
 		t.Fatalf("commit body is not header+file NDJSON: %#v", gotLines)
 	}
 	fileValue, _ := gotLines[1]["value"].(map[string]any)
+	if fileValue["path"] != contributionsDatasetPath {
+		t.Fatalf("expected the candidate to be committed to the shared file %q, got %q", contributionsDatasetPath, fileValue["path"])
+	}
 	decoded, err := base64.StdEncoding.DecodeString(fileValue["content"].(string))
 	if err != nil {
 		t.Fatal(err)
 	}
+	lines := strings.Split(strings.TrimSpace(string(decoded)), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("expected exactly one appended line for the first contribution, got %d", len(lines))
+	}
 	var sentCandidate ContributionCandidate
-	if err := json.Unmarshal(decoded, &sentCandidate); err != nil {
+	if err := json.Unmarshal([]byte(lines[0]), &sentCandidate); err != nil {
 		t.Fatal(err)
 	}
 	if sentCandidate.CandidateID != candidate.CandidateID || sentCandidate.SchemaVersion != candidate.SchemaVersion {
 		t.Fatalf("committed body does not match the prepared candidate: %#v", sentCandidate)
+	}
+}
+
+func TestCommitCandidateAsPRAppendsToExistingSharedFile(t *testing.T) {
+	dir := t.TempDir()
+	candidatePath := writeTestCandidate(t, dir)
+	candidateBytes, err := os.ReadFile(candidatePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var candidate ContributionCandidate
+	if err := json.Unmarshal(candidateBytes, &candidate); err != nil {
+		t.Fatal(err)
+	}
+	existingLine := `{"schema_version":"nostrhost-agent-contribution/v1","candidate_id":"candidate-existing"}` + "\n"
+	var gotContent []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(existingLine))
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		for _, line := range strings.Split(strings.TrimSpace(string(body)), "\n") {
+			var decoded map[string]any
+			if err := json.Unmarshal([]byte(line), &decoded); err != nil {
+				continue
+			}
+			if decoded["key"] == "file" {
+				value, _ := decoded["value"].(map[string]any)
+				gotContent, _ = base64.StdEncoding.DecodeString(value["content"].(string))
+			}
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"success":true,"pullRequestUrl":"https://huggingface.co/datasets/owner/dataset/discussions/2"}`))
+	}))
+	defer server.Close()
+
+	if _, err := commitCandidateAsPR(context.Background(), server.Client(), server.URL, "owner/dataset", "main", "hf_testtoken", candidate); err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(gotContent)), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("expected the existing line plus the new candidate's line, got %d lines: %q", len(lines), gotContent)
+	}
+	if !strings.HasPrefix(lines[0], `{"schema_version":"nostrhost-agent-contribution/v1","candidate_id":"candidate-existing"`) {
+		t.Fatalf("existing shared file content was not preserved: %q", lines[0])
+	}
+	var appended ContributionCandidate
+	if err := json.Unmarshal([]byte(lines[1]), &appended); err != nil {
+		t.Fatal(err)
+	}
+	if appended.CandidateID != candidate.CandidateID {
+		t.Fatalf("new candidate was not appended as the second line: %#v", appended)
 	}
 }
 
@@ -113,7 +179,7 @@ func TestCommitCandidateAsPRFailsOnNonSuccessStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := commitCandidateAsPR(context.Background(), server.Client(), server.URL+"/commit", "bad-token", candidate.CandidateID+".json", candidate); err == nil {
+	if _, err := commitCandidateAsPR(context.Background(), server.Client(), server.URL, "owner/dataset", "main", "bad-token", candidate); err == nil {
 		t.Fatal("expected an error on a non-2xx commit response")
 	}
 }
@@ -128,7 +194,7 @@ func TestCommitCandidateAsPRFailsWithoutPullRequestURL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := commitCandidateAsPR(context.Background(), server.Client(), server.URL+"/commit", "hf_testtoken", candidate.CandidateID+".json", candidate); err == nil {
+	if _, err := commitCandidateAsPR(context.Background(), server.Client(), server.URL, "owner/dataset", "main", "hf_testtoken", candidate); err == nil {
 		t.Fatal("expected an error when the API doesn't report a pull request URL (would mean a direct commit happened)")
 	}
 }

@@ -109,11 +109,9 @@ func (s *ContributionAutoSubmitter) OnCycle(trace CycleTrace, cycleErr error) {
 		log.Printf("nostrhost-agent: automatic contribution skipped, no usable token: %v", err)
 		return
 	}
-	remotePath := candidate.CandidateID + ".json"
-	commitURL := fmt.Sprintf("%s/api/datasets/%s/commit/%s?create_pr=1", s.hubBaseURL, s.Config.DatasetRepo, s.Config.BaseRevision)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	prURL, err := commitCandidateAsPR(ctx, s.Client, commitURL, token, remotePath, candidate)
+	prURL, err := commitCandidateAsPR(ctx, s.Client, s.hubBaseURL, s.Config.DatasetRepo, s.Config.BaseRevision, token, candidate)
 	if err != nil {
 		log.Printf("nostrhost-agent: automatic contribution failed for cycle %s: %v", trace.ID, err)
 		return

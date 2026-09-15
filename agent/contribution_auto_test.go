@@ -30,6 +30,10 @@ func TestContributionAutoSubmitterSubmitsEligibleCycleExactlyOnce(t *testing.T) 
 	requests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests++
+		if r.Method == http.MethodGet {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"success":true,"pullRequestUrl":"https://huggingface.co/datasets/owner/dataset/discussions/9"}`))
 	}))
@@ -40,8 +44,8 @@ func TestContributionAutoSubmitterSubmitsEligibleCycleExactlyOnce(t *testing.T) 
 	trace.ID = "cycle-auto-1"
 
 	submitter.OnCycle(trace, nil)
-	if requests != 1 {
-		t.Fatalf("expected exactly one submission request, got %d", requests)
+	if requests != 2 {
+		t.Fatalf("expected one fetch of the shared file plus one commit request, got %d", requests)
 	}
 	if !submitter.submitted[trace.ID] {
 		t.Fatal("cycle was not recorded as submitted in memory")
@@ -56,7 +60,7 @@ func TestContributionAutoSubmitterSubmitsEligibleCycleExactlyOnce(t *testing.T) 
 
 	// A second OnCycle for the same cycle must not submit again.
 	submitter.OnCycle(trace, nil)
-	if requests != 1 {
+	if requests != 2 {
 		t.Fatalf("expected no additional request for an already-submitted cycle, got %d total", requests)
 	}
 }
