@@ -241,12 +241,8 @@ func DownloadModel(ctx context.Context, artifact ModelArtifact, profile HostCapa
 	if !assessments[0].ResourceCompatible {
 		return "", errors.New("model does not fit this host's current memory and disk profile")
 	}
-	dirInfo, err := os.Lstat(directory)
-	if err != nil {
+	if _, err := verifyRealDirectory(directory); err != nil {
 		return "", fmt.Errorf("inspect model directory: %w", err)
-	}
-	if dirInfo.Mode()&os.ModeSymlink != 0 || !dirInfo.IsDir() {
-		return "", errors.New("model directory must be a real directory, not a symlink")
 	}
 	free, err := diskFree(directory)
 	if err != nil {
@@ -289,39 +285,32 @@ func downloadVerified(ctx context.Context, client *http.Client, sourceURL, direc
 	if response.ContentLength >= 0 && response.ContentLength != expectedSize {
 		return "", errors.New("model source content length does not match the catalog")
 	}
-	temp, err := os.CreateTemp(directory, ".nostrhost-model-*.part")
-	if err != nil {
-		return "", fmt.Errorf("create temporary model file: %w", err)
-	}
-	tempPath := temp.Name()
-	defer os.Remove(tempPath)
-	if err := temp.Chmod(0o600); err != nil {
-		temp.Close()
-		return "", fmt.Errorf("secure temporary model file: %w", err)
-	}
-	hasher := sha256.New()
-	written, err := io.Copy(io.MultiWriter(temp, hasher), io.LimitReader(response.Body, expectedSize+1))
-	if err != nil {
-		temp.Close()
-		return "", fmt.Errorf("write temporary model file: %w", err)
-	}
-	if err := temp.Sync(); err != nil {
-		temp.Close()
-		return "", fmt.Errorf("sync temporary model file: %w", err)
-	}
-	if err := temp.Close(); err != nil {
-		return "", fmt.Errorf("close temporary model file: %w", err)
-	}
-	if written != expectedSize || hex.EncodeToString(hasher.Sum(nil)) != expectedSHA {
-		return "", errors.New("model artifact size or SHA-256 verification failed")
-	}
 	destination := filepath.Join(directory, filename)
-	if err := os.Link(tempPath, destination); err != nil {
-		return "", fmt.Errorf("publish verified model without overwriting: %w", err)
+	hasher := sha256.New()
+	var written int64
+	write := func(temp *os.File) error {
+		n, err := io.Copy(io.MultiWriter(temp, hasher), io.LimitReader(response.Body, expectedSize+1))
+		written = n
+		if err != nil {
+			return fmt.Errorf("write temporary model file: %w", err)
+		}
+		return nil
 	}
-	if err := os.Remove(tempPath); err != nil {
-		os.Remove(destination)
-		return "", fmt.Errorf("remove verified temporary model file: %w", err)
+	publish := func(tempPath string) error {
+		if written != expectedSize || hex.EncodeToString(hasher.Sum(nil)) != expectedSHA {
+			return errors.New("model artifact size or SHA-256 verification failed")
+		}
+		if err := os.Link(tempPath, destination); err != nil {
+			return fmt.Errorf("publish verified model without overwriting: %w", err)
+		}
+		if err := os.Remove(tempPath); err != nil {
+			os.Remove(destination)
+			return fmt.Errorf("remove verified temporary model file: %w", err)
+		}
+		return nil
+	}
+	if err := writeFileAtomic0600(directory, ".nostrhost-model-*.part", write, publish); err != nil {
+		return "", err
 	}
 	return destination, nil
 }
@@ -350,8 +339,8 @@ func InferenceRuntimeCatalog() []InferenceRuntimeArtifact {
 		{
 			ID: "llama-cpp-b10950-cpu", Tag: "b10950",
 			AssetName: "llama-b10950-bin-ubuntu-x64.tar.gz", ServerBinary: "llama-server",
-			SizeBytes: 16822383,
-			SHA256:    "db40ef24d13ab23d6fd486eae219f634edc5ed529c2c217e71b4ef0d4572417c",
+			SizeBytes:   16822383,
+			SHA256:      "db40ef24d13ab23d6fd486eae219f634edc5ed529c2c217e71b4ef0d4572417c",
 			SupportedOS: []string{"linux"}, SupportedArchitectures: []string{"amd64"},
 		},
 	}
@@ -398,12 +387,8 @@ func DownloadRuntime(ctx context.Context, artifact InferenceRuntimeArtifact, pro
 	if !containsString(artifact.SupportedOS, profile.OS) || !containsString(artifact.SupportedArchitectures, profile.Architecture) {
 		return "", errors.New("inference runtime artifact does not support this host platform")
 	}
-	dirInfo, err := os.Lstat(directory)
-	if err != nil {
+	if _, err := verifyRealDirectory(directory); err != nil {
 		return "", fmt.Errorf("inspect runtime directory: %w", err)
-	}
-	if dirInfo.Mode()&os.ModeSymlink != 0 || !dirInfo.IsDir() {
-		return "", errors.New("runtime directory must be a real directory, not a symlink")
 	}
 	free, err := diskFree(directory)
 	if err != nil {

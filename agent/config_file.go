@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"time"
 )
 
@@ -65,25 +64,11 @@ type EmbeddingFileConfig struct {
 // is not accessible to group or other users. Private relay and inference keys
 // may be present, so broad file permissions and symlinks are rejected.
 func LoadRuntimeConfig(path string) (RuntimeConfig, error) {
-	before, err := os.Lstat(path)
+	file, _, err := openVerifiedFile(path, WithRejectGroupOtherPerms(), WithMaxOpenSize(maxRuntimeConfigBytes))
 	if err != nil {
 		return RuntimeConfig{}, fmt.Errorf("inspect runtime config: %w", err)
 	}
-	if before.Mode()&os.ModeSymlink != 0 || !before.Mode().IsRegular() {
-		return RuntimeConfig{}, errors.New("runtime config must be a regular file, not a symlink")
-	}
-	if before.Mode().Perm()&0o077 != 0 {
-		return RuntimeConfig{}, errors.New("runtime config must not be readable or writable by group or other users")
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		return RuntimeConfig{}, fmt.Errorf("open runtime config: %w", err)
-	}
 	defer file.Close()
-	after, err := file.Stat()
-	if err != nil || !os.SameFile(before, after) || after.Mode().Perm()&0o077 != 0 {
-		return RuntimeConfig{}, errors.New("runtime config changed while it was being opened")
-	}
 	data, err := io.ReadAll(io.LimitReader(file, maxRuntimeConfigBytes+1))
 	if err != nil || len(data) > maxRuntimeConfigBytes {
 		return RuntimeConfig{}, errors.New("runtime config exceeds the 256 KiB limit")
