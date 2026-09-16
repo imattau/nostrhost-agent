@@ -74,6 +74,9 @@ func TestRelayOperationTransportSignsAndPublishesAgentRequest(t *testing.T) {
 	if err := json.Unmarshal([]byte(pool.published.Content), &body); err != nil || body["tool"] != "service.restart" {
 		t.Fatalf("unexpected operation request content: %s", pool.published.Content)
 	}
+	if body["catalog_digest"] != GeneratedCatalogDigest {
+		t.Fatalf("request used stale catalogue digest: %#v", body["catalog_digest"])
+	}
 	if pool.published.Tags.FindWithValue("p", strings.Repeat("3", 64)) == nil {
 		t.Fatalf("target pubkey tag missing: %#v", pool.published.Tags)
 	}
@@ -89,7 +92,7 @@ func TestRelayOperationTransportVerifiesCorrelatedServerResult(t *testing.T) {
 	event := nostr.Event{
 		CreatedAt: nostr.Now(), Kind: kindExecutionResult,
 		Tags:    nostr.Tags{nostr.Tag{"e", requestID}},
-		Content: `{"ok":true,"result":{"status":"active"}}`,
+		Content: `{"ok":true,"catalog_digest":"` + GeneratedCatalogDigest + `","result":{"status":"active"}}`,
 	}
 	if err := event.Sign(serverSecret); err != nil {
 		t.Fatal(err)

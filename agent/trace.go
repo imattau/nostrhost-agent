@@ -15,7 +15,7 @@ type CycleTrace struct {
 	Trigger             string              `json:"trigger"`
 	Target              string              `json:"target,omitempty"`
 	Observations        map[string]any      `json:"observations,omitempty"`
-	Capabilities        []Capability        `json:"capabilities,omitempty"`
+	Scopes              []Scope             `json:"scopes,omitempty"`
 	AvailableOperations []OperationSnapshot `json:"available_operations,omitempty"`
 	PlanningCompleted   bool                `json:"planning_completed,omitempty"`
 	Knowledge           []KnowledgeCitation `json:"knowledge,omitempty"`

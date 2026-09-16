@@ -14,7 +14,8 @@ lifecycle.
 
 ## Initial scope
 
-- Describe operations using stable names and required capabilities.
+- Generate the agent's operation registry from the host catalogue, including
+  stable names, native scopes, input schemas, and result schemas.
 - Publish strict JSON argument schemas and reject missing, mistyped, or
   unknown arguments before requesting approval or dispatching an operation;
   operation arguments are capped at 64 KiB.
@@ -53,7 +54,7 @@ lifecycle.
 - Redact common credential-shaped fields and operation-declared sensitive
   arguments from persisted traces.
 
-There is no shell operation. The agent cannot change its own capabilities or
+There is no shell operation. The agent cannot change its own scope grants or
 disable audit. The NostrHost operation daemon remains authoritative for
 per-operation authorization, request-bound signed owner approval, and machine
 changes. The agent's loopback relay adapter uses the agent identity for NIP-42

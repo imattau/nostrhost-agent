@@ -11,13 +11,13 @@ import (
 func TestScoreCaseRequiresExactRegisteredProposal(t *testing.T) {
 	registry := agent.DefaultRegistry()
 	test := testCase{
-		Name: "status", ExpectedOperation: "app.health", ExpectedArgs: map[string]any{"app": "photos"},
+		Name: "status", ExpectedOperation: "service.status", ExpectedArgs: map[string]any{"name": "photos"},
 	}
-	good := scoreCase(test, []agent.Proposal{{Operation: "app.health", Args: map[string]any{"app": "photos"}}}, nil, 12, registry)
+	good := scoreCase(test, []agent.Proposal{{Operation: "service.status", Args: map[string]any{"name": "photos"}}}, nil, 12, registry)
 	if !good.Pass {
 		t.Fatalf("valid proposal not accepted: %#v", good)
 	}
-	badArgs := scoreCase(test, []agent.Proposal{{Operation: "app.health", Args: map[string]any{"app": "other"}}}, nil, 12, registry)
+	badArgs := scoreCase(test, []agent.Proposal{{Operation: "service.status", Args: map[string]any{"name": "other"}}}, nil, 12, registry)
 	if badArgs.Pass {
 		t.Fatal("wrong target accepted")
 	}
@@ -30,9 +30,9 @@ func TestScoreCaseRequiresExactRegisteredProposal(t *testing.T) {
 func TestScoreCaseAllowsSchemaValidOptionalArguments(t *testing.T) {
 	registry := agent.DefaultRegistry()
 	test := testCase{
-		Name: "logs", ExpectedOperation: "app.logs", ExpectedArgs: map[string]any{"app": "photos"},
+		Name: "history", ExpectedOperation: "service.history", ExpectedArgs: map[string]any{"names": []any{"photos"}},
 	}
-	proposal := agent.Proposal{Operation: "app.logs", Args: map[string]any{"app": "photos", "lines": float64(10)}}
+	proposal := agent.Proposal{Operation: "service.history", Args: map[string]any{"names": []any{"photos"}, "lines": float64(10)}}
 	if got := scoreCase(test, []agent.Proposal{proposal}, nil, 12, registry); !got.Pass {
 		t.Fatalf("schema-valid optional argument rejected: %#v", got)
 	}

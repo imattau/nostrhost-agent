@@ -1,4 +1,5 @@
 {
+  "schema_version": 2,
   "relay": {
     "relay_url": "ws://127.0.0.1:4848",
     "agent_secret_key": "REPLACE_WITH_64_HEX_CHAR_AGENT_SECRET",
@@ -7,14 +8,12 @@
   },
   "policy": {
     "level": "observe",
-    "capabilities": {
-      "health.read": true,
-      "system.read": true
+    "scopes": {
+      "services.read": true
     }
   },
   "observation_queries": [
-    {"operation": "system.health"},
-    {"operation": "disk.status"}
+    {"operation": "service.status"}
   ],
   "audit_path": "/var/lib/nostrhost-agent/audit.jsonl",
   "interval": "6h",

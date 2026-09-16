@@ -31,7 +31,9 @@ func TestNostrOperationExecutorPublishesAndCorrelatesResult(t *testing.T) {
 		requestID: strings.Repeat("a", 64),
 		result: OperationResultEvent{
 			RequestID: strings.Repeat("a", 64), Author: strings.Repeat("b", 64),
-			OK: true, Result: map[string]any{"service": "nginx", "status": "active"},
+			CatalogDigest: GeneratedCatalogDigest,
+			OK:            true,
+			Result:        map[string]any{"service": "nginx", "status": "active"},
 		},
 	}
 	executor := NostrOperationExecutor{Transport: transport, ExpectedServerPubkey: strings.Repeat("b", 64)}
@@ -51,6 +53,7 @@ func TestNostrOperationExecutorRejectsUntrustedOrUncorrelatedResults(t *testing.
 	}{
 		{"wrong request", OperationResultEvent{RequestID: strings.Repeat("c", 64), Author: strings.Repeat("b", 64), OK: true}},
 		{"wrong author", OperationResultEvent{RequestID: strings.Repeat("a", 64), Author: strings.Repeat("c", 64), OK: true}},
+		{"stale catalogue", OperationResultEvent{RequestID: strings.Repeat("a", 64), Author: strings.Repeat("b", 64), CatalogDigest: "sha256:stale", OK: true}},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -107,7 +110,7 @@ func TestNostrOperationExecutorUsesRequestBoundHostApprovalChain(t *testing.T) {
 func TestNostrOperationExecutorNeverPublishesUnregisteredOperation(t *testing.T) {
 	transport := &fakeOperationTransport{}
 	executor := NostrOperationExecutor{Transport: transport, ExpectedServerPubkey: strings.Repeat("b", 64)}
-	custom := NewOperationSpec(OperationSpec{Name: "shell.exec", Capability: SystemRead}, func(map[string]any) error { return nil })
+	custom := NewOperationSpec(OperationSpec{Name: "shell.exec", Scopes: []Scope{Scope("server.read")}}, func(map[string]any) error { return nil })
 	if _, err := executor.Execute(context.Background(), custom, map[string]any{"command": "id"}); err == nil {
 		t.Fatal("unregistered operation was accepted")
 	}

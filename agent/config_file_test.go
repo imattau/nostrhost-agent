@@ -9,14 +9,15 @@ import (
 )
 
 const validRuntimeConfigJSON = `{
+  "schema_version": 2,
   "relay": {
     "relay_url": "ws://127.0.0.1:4848",
     "agent_secret_key": "1111111111111111111111111111111111111111111111111111111111111111",
     "trusted_server_key": "2222222222222222222222222222222222222222222222222222222222222222",
     "result_timeout": "90s"
   },
-  "policy": {"level": "observe", "capabilities": {"health.read": true}},
-  "observation_queries": [{"operation": "system.health"}],
+  "policy": {"level": "observe", "scopes": {"services.read": true}},
+  "observation_queries": [{"operation": "service.status"}],
   "audit_path": "/var/lib/nostrhost-agent/audit.jsonl",
 	"interval": "6h",
 	"listen_for_events": true,

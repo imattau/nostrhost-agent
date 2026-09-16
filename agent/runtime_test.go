@@ -20,8 +20,8 @@ func testRuntimeConfig(t *testing.T) RuntimeConfig {
 		Relay: RelayTransportConfig{
 			RelayURL: "ws://127.0.0.1:4848", AgentSecretKey: strings.Repeat("1", 64), TrustedServerKey: serverPubkey,
 		},
-		Policy:             Policy{Level: Observe, Capabilities: map[Capability]bool{HealthRead: true}},
-		ObservationQueries: []ObservationQuery{{Operation: "system.health"}},
+		Policy:             Policy{Level: Observe, Scopes: map[Scope]bool{"services.read": true}},
+		ObservationQueries: []ObservationQuery{{Operation: "service.status"}},
 		AuditPath:          filepath.Join(t.TempDir(), "audit.jsonl"),
 	}
 }
@@ -72,9 +72,9 @@ func TestResidentRuntimeCanCloseBeforeStarting(t *testing.T) {
 
 func TestResidentRuntimePreflightsObservationCapabilities(t *testing.T) {
 	cfg := testRuntimeConfig(t)
-	cfg.Policy.Capabilities = map[Capability]bool{}
+	cfg.Policy.Scopes = map[Scope]bool{}
 	if _, err := NewResidentRuntime(cfg); err == nil {
-		t.Fatal("observation query bypassed local capability configuration")
+		t.Fatal("observation query bypassed local scope configuration")
 	}
 }
 
@@ -92,8 +92,8 @@ func TestResidentRuntimeSkipsInferenceInObserveMode(t *testing.T) {
 
 func TestResidentRuntimeBuildsFreshReadVerifierForMaintenance(t *testing.T) {
 	cfg := testRuntimeConfig(t)
-	cfg.Policy = Policy{Level: Maintain, Capabilities: map[Capability]bool{
-		HealthRead: true, ServiceRestart: true, SystemRead: true,
+	cfg.Policy = Policy{Level: Maintain, Scopes: map[Scope]bool{
+		"services.read": true, Scope("services.restart"): true,
 	}}
 	cfg.Inference = LLMPlannerConfig{BaseURL: "http://127.0.0.1:8080", Model: "local-model"}
 	cfg.VerificationRules = []VerificationRule{{

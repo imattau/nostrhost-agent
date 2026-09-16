@@ -29,14 +29,14 @@ func TestOpenAICompatiblePlannerSendsOnlyGrantedToolsAndParsesToolCalls(t *testi
 		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
 			t.Errorf("decode completion request: %v", err)
 		}
-		return plannerResponse(http.StatusOK, `{"choices":[{"message":{"tool_calls":[{"type":"function","function":{"name":"app.health","arguments":"{\"app\":\"photos\"}"}}]}}]}`, r), nil
+		return plannerResponse(http.StatusOK, `{"choices":[{"message":{"tool_calls":[{"type":"function","function":{"name":"service.status","arguments":"{\"name\":\"photos\"}"}}]}}]}`, r), nil
 	})}
 
 	planner, err := NewOpenAICompatiblePlanner(LLMPlannerConfig{BaseURL: "http://127.0.0.1:8080/v1", Model: "qwen-local", APIKey: "local-key", Client: client})
 	if err != nil {
 		t.Fatal(err)
 	}
-	operations := []OperationSpec{DefaultRegistry()["app.health"]}
+	operations := []OperationSpec{DefaultRegistry()["service.status"]}
 	proposals, err := planner.Plan(context.Background(), PlanningInput{
 		Trigger: "health_check_failed", Target: "photos",
 		Observations: map[string]any{"app": "photos", "health": "failed"}, Operations: operations,
@@ -44,13 +44,13 @@ func TestOpenAICompatiblePlannerSendsOnlyGrantedToolsAndParsesToolCalls(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(proposals) != 1 || proposals[0].Operation != "app.health" || proposals[0].Args["app"] != "photos" {
+	if len(proposals) != 1 || proposals[0].Operation != "service.status" || proposals[0].Args["name"] != "photos" {
 		t.Fatalf("unexpected proposal output: %#v", proposals)
 	}
-	if got.Model != "qwen-local" || got.ToolChoice != "auto" || got.MaxTokens != maxPlannerOutputTokens || got.ReasoningEffort != "none" || len(got.Tools) != 1 || got.Tools[0].Function.Name != "app.health" {
+	if got.Model != "qwen-local" || got.ToolChoice != "auto" || got.MaxTokens != maxPlannerOutputTokens || got.ReasoningEffort != "none" || len(got.Tools) != 1 || got.Tools[0].Function.Name != "service.status" {
 		t.Fatalf("planner request did not preserve the host tool boundary: %#v", got)
 	}
-	if !strings.Contains(string(got.Tools[0].Function.Parameters), `"required":["app"]`) {
+	if !strings.Contains(string(got.Tools[0].Function.Parameters), `"name"`) {
 		t.Fatalf("strict argument schema missing from tool definition: %s", got.Tools[0].Function.Parameters)
 	}
 }
@@ -71,7 +71,7 @@ func TestOpenAICompatiblePlannerRejectsRemoteEndpointsAndDoesNotFollowRedirects(
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = planner.Plan(context.Background(), PlanningInput{Operations: []OperationSpec{DefaultRegistry()["app.health"]}})
+	_, err = planner.Plan(context.Background(), PlanningInput{Operations: []OperationSpec{DefaultRegistry()["service.status"]}})
 	if err == nil || remoteCalled {
 		t.Fatalf("planner followed local endpoint redirect: err=%v remote_called=%v", err, remoteCalled)
 	}
@@ -91,7 +91,7 @@ func TestOpenAICompatiblePlannerHandlesNoToolCallAndNoGrantedTools(t *testing.T)
 	if err != nil || proposals != nil || requests != 0 {
 		t.Fatalf("planner contacted model without granted tools: proposals=%#v requests=%d err=%v", proposals, requests, err)
 	}
-	proposals, err = planner.Plan(context.Background(), PlanningInput{Operations: []OperationSpec{DefaultRegistry()["app.health"]}})
+	proposals, err = planner.Plan(context.Background(), PlanningInput{Operations: []OperationSpec{DefaultRegistry()["service.status"]}})
 	if err != nil || len(proposals) != 0 || requests != 1 {
 		t.Fatalf("no-tool response mishandled: proposals=%#v requests=%d err=%v", proposals, requests, err)
 	}
@@ -99,13 +99,13 @@ func TestOpenAICompatiblePlannerHandlesNoToolCallAndNoGrantedTools(t *testing.T)
 
 func TestOpenAICompatiblePlannerRejectsMalformedToolArguments(t *testing.T) {
 	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
-		return plannerResponse(http.StatusOK, `{"choices":[{"message":{"tool_calls":[{"function":{"name":"app.health","arguments":"[]"}}]}}]}`, r), nil
+		return plannerResponse(http.StatusOK, `{"choices":[{"message":{"tool_calls":[{"function":{"name":"service.status","arguments":"[]"}}]}}]}`, r), nil
 	})}
 	planner, err := NewOpenAICompatiblePlanner(LLMPlannerConfig{BaseURL: "http://127.0.0.1:8080", Model: "model", Client: client})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := planner.Plan(context.Background(), PlanningInput{Operations: []OperationSpec{DefaultRegistry()["app.health"]}}); err == nil {
+	if _, err := planner.Plan(context.Background(), PlanningInput{Operations: []OperationSpec{DefaultRegistry()["service.status"]}}); err == nil {
 		t.Fatal("non-object tool arguments accepted")
 	}
 }

@@ -14,7 +14,7 @@ func TestFaultEvaluation(t *testing.T) {
 	type scenario struct {
 		name             string
 		level            AutonomyLevel
-		capabilities     []Capability
+		scopes           []Scope
 		observations     map[string]any
 		proposal         Proposal
 		verified         bool
@@ -28,14 +28,14 @@ func TestFaultEvaluation(t *testing.T) {
 	scenarios := []scenario{
 		{
 			name:  "stopped service recovers and verifies",
-			level: Maintain, capabilities: []Capability{HealthRead, ServiceRestart},
+			level: Maintain, scopes: []Scope{Scope("diagnosis.read"), Scope("services.restart")},
 			observations: map[string]any{"service": "web", "status": "inactive"},
 			proposal:     Proposal{Operation: "service.restart", Args: map[string]any{"name": "web"}},
 			verified:     true, wantResult: "verified", wantOutcome: "verified", wantExecutions: 1,
 		},
 		{
 			name:  "disk pressure cannot trigger unregistered shell cleanup",
-			level: Autonomous, capabilities: []Capability{SystemRead},
+			level: Autonomous, scopes: []Scope{Scope("server.read")},
 			observations: map[string]any{"filesystem": "/", "available_percent": 1},
 			proposal:     Proposal{Operation: "shell.exec", Args: map[string]any{"command": "rm -rf /var/cache"}},
 			verified:     true, wantResult: "needs_attention", wantOutcome: "deny", wantExecutions: 0,
@@ -43,15 +43,15 @@ func TestFaultEvaluation(t *testing.T) {
 		},
 		{
 			name:  "restore stays behind owner approval",
-			level: Autonomous, capabilities: []Capability{AppRestore},
+			level: Autonomous, scopes: []Scope{Scope("backups.restore")},
 			observations: map[string]any{"app": "photos", "health": "failed"},
-			proposal:     Proposal{Operation: "app.restore", Args: map[string]any{"app": "photos", "snapshot": "snapshot-7"}},
+			proposal:     Proposal{Operation: "backup.restore", Args: map[string]any{"name": "snapshot-7", "apps": []any{"photos"}}},
 			verified:     true, wantResult: "approval_required", wantOutcome: "approval_unavailable", wantExecutions: 0,
 			wantApproval: 1, wantUnsafeWrites: 0,
 		},
 		{
 			name:  "restart without recovery evidence needs attention",
-			level: Maintain, capabilities: []Capability{HealthRead, ServiceRestart},
+			level: Maintain, scopes: []Scope{Scope("diagnosis.read"), Scope("services.restart")},
 			observations: map[string]any{"service": "web", "status": "inactive"},
 			proposal:     Proposal{Operation: "service.restart", Args: map[string]any{"name": "web"}},
 			verified:     false, wantResult: "needs_attention", wantOutcome: "not_verified", wantExecutions: 1,
@@ -75,15 +75,18 @@ func TestFaultEvaluation(t *testing.T) {
 			executor := &fakeExecutor{}
 			verifier := &fakeVerifier{verified: tc.verified}
 			audit := &fakeAudit{}
-			capabilities := make(map[Capability]bool, len(tc.capabilities))
-			for _, capability := range tc.capabilities {
-				capabilities[capability] = true
+			scopes := make(map[Scope]bool, len(tc.scopes))
+			for _, scope := range tc.scopes {
+				scopes[scope] = true
 			}
-			runner := testRunner(tc.level, HealthRead, planner, executor, audit)
-			runner.Policy.Capabilities = capabilities
+			runner := testRunner(tc.level, Scope("diagnosis.read"), planner, executor, audit)
+			runner.Policy.Scopes = scopes
 			runner.Registry = registry
 			runner.Observer = fakeObserver{value: tc.observations}
 			runner.Verifier = verifier
+			if tc.wantOutcome == "approval_unavailable" {
+				runner.Approvals = nil
+			}
 
 			trace, err := runner.Run(context.Background(), CycleRequest{Trigger: "fault_evaluation", Target: tc.name})
 			if err != nil {
@@ -104,7 +107,7 @@ func TestFaultEvaluation(t *testing.T) {
 			if tc.wantOutcome == "approval_unavailable" && executor.calls != 0 {
 				t.Errorf("approval-required operation reached executor")
 			}
-			if executor.calls > 0 && (trace.Proposals[0].Proposal.Operation == "app.restore" || trace.Proposals[0].Proposal.Operation == "shell.exec") {
+			if executor.calls > 0 && (trace.Proposals[0].Proposal.Operation == "backup.restore" || trace.Proposals[0].Proposal.Operation == "shell.exec") {
 				metrics.UnsafeWrites++
 			}
 			if tc.wantOutcome == "approval_unavailable" && executor.calls != 0 {

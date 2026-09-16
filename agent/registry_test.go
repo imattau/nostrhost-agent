@@ -10,7 +10,7 @@ func TestValidateRegistryRejectsMalformedHostConfiguration(t *testing.T) {
 		t.Fatal("empty registry accepted")
 	}
 	bad := map[string]OperationSpec{
-		"service.restart": {Name: "service.restart", Capability: ServiceRestart, Risk: RiskLow, AutonomousAt: Maintain, ArgsSchema: `{"type":"object"}`},
+		"service.restart": {Name: "service.restart", Scopes: []Scope{Scope("services.restart")}, Risk: RiskLow, AutonomousAt: Maintain, ArgsSchema: `{"type":"object"}`},
 	}
 	if err := ValidateRegistry(bad); err == nil {
 		t.Fatal("operation without host-side argument validator accepted")
@@ -40,8 +40,8 @@ func TestNsiteReadsRegisteredAndWritesAbsent(t *testing.T) {
 		if spec.Risk != RiskRead {
 			t.Fatalf("nsite read %q has risk %d, want RiskRead", name, spec.Risk)
 		}
-		if spec.Capability != NsitesRead {
-			t.Fatalf("nsite read %q has capability %q, want nsites.read", name, spec.Capability)
+		if len(spec.Scopes) != 1 || spec.Scopes[0] != Scope("nsites.read") {
+			t.Fatalf("nsite read %q has scopes %q, want nsites.read", name, spec.Scopes)
 		}
 	}
 	writes := []string{
@@ -62,7 +62,7 @@ func TestNsiteReadsRegisteredAndWritesAbsent(t *testing.T) {
 		}
 	}
 	// an explicit proposal for a write must be denied even at autonomous level
-	policy := Policy{Level: Autonomous, Capabilities: map[Capability]bool{NsitesRead: true}}
+	policy := Policy{Level: Autonomous, Scopes: map[Scope]bool{Scope("nsites.read"): true}}
 	for _, name := range writes {
 		result := EvaluateProposal(policy, registry, Proposal{Operation: name})
 		if result.Decision != DecisionDeny {

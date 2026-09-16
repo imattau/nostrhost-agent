@@ -4,28 +4,28 @@ import "testing"
 
 func TestPolicySeparatesCapabilityFromAutonomy(t *testing.T) {
 	registry := DefaultRegistry()
-	maintain := Policy{Level: Maintain, Capabilities: map[Capability]bool{ServiceRestart: true}}
+	maintain := Policy{Level: Maintain, Scopes: map[Scope]bool{Scope("services.restart"): true}}
 
-	if got := EvaluateProposal(maintain, registry, Proposal{Operation: "service.restart"}).Decision; got != DecisionAllow {
-		t.Fatalf("service restart decision = %q, want allow", got)
+	if got := EvaluateProposal(maintain, registry, Proposal{Operation: "service.restart"}).Decision; got != DecisionApproval {
+		t.Fatalf("service restart decision = %q, want approval", got)
 	}
-	if got := EvaluateProposal(maintain, registry, Proposal{Operation: "firewall.change"}).Decision; got != DecisionDeny {
+	if got := EvaluateProposal(maintain, registry, Proposal{Operation: "firewall.open"}).Decision; got != DecisionDeny {
 		t.Fatalf("firewall change decision = %q, want deny", got)
 	}
-	maintain.Capabilities[FirewallWrite] = true
-	if got := EvaluateProposal(maintain, registry, Proposal{Operation: "firewall.change"}).Decision; got != DecisionApproval {
-		t.Fatalf("firewall change with capability decision = %q, want approval", got)
+	maintain.Scopes[Scope("firewall.write")] = true
+	if got := EvaluateProposal(maintain, registry, Proposal{Operation: "firewall.open"}).Decision; got != DecisionApproval {
+		t.Fatalf("firewall change with scope decision = %q, want approval", got)
 	}
 }
 
 func TestPolicyAutonomyModesAndUnknownOperations(t *testing.T) {
 	registry := DefaultRegistry()
-	policy := Policy{Level: Observe, Capabilities: map[Capability]bool{HealthRead: true}}
-	if got := EvaluateProposal(policy, registry, Proposal{Operation: "app.health"}).Decision; got != DecisionObserveOnly {
+	policy := Policy{Level: Observe, Scopes: map[Scope]bool{"services.read": true}}
+	if got := EvaluateProposal(policy, registry, Proposal{Operation: "service.status"}).Decision; got != DecisionObserveOnly {
 		t.Fatalf("observe decision = %q, want observe_only", got)
 	}
 	policy.Level = Assist
-	if got := EvaluateProposal(policy, registry, Proposal{Operation: "app.health"}).Decision; got != DecisionProposalOnly {
+	if got := EvaluateProposal(policy, registry, Proposal{Operation: "service.status"}).Decision; got != DecisionProposalOnly {
 		t.Fatalf("assist decision = %q, want proposal_only", got)
 	}
 	if got := EvaluateProposal(policy, registry, Proposal{Operation: "shell.exec"}).Decision; got != DecisionDeny {
@@ -34,16 +34,16 @@ func TestPolicyAutonomyModesAndUnknownOperations(t *testing.T) {
 }
 
 func TestPolicyRejectsInvalidRegistryThreshold(t *testing.T) {
-	policy := Policy{Level: Autonomous, Capabilities: map[Capability]bool{"x": true}}
-	got := policy.Evaluate(OperationSpec{Name: "x", Capability: "x", AutonomousAt: "future"})
+	policy := Policy{Level: Autonomous, Scopes: map[Scope]bool{"x": true}}
+	got := policy.Evaluate(OperationSpec{Name: "x", Scopes: []Scope{"x"}, AutonomousAt: "future"})
 	if got.Decision != DecisionDeny {
 		t.Fatalf("decision = %q, want deny", got.Decision)
 	}
 }
 
 func TestElevatedRiskAlwaysRequiresApproval(t *testing.T) {
-	policy := Policy{Level: Autonomous, Capabilities: map[Capability]bool{PackageUpdate: true}}
-	spec := OperationSpec{Name: "package.upgrade", Capability: PackageUpdate, Risk: RiskElevated, AutonomousAt: Autonomous}
+	policy := Policy{Level: Autonomous, Scopes: map[Scope]bool{Scope("apps.upgrade"): true}}
+	spec := OperationSpec{Name: "package.upgrade", Scopes: []Scope{Scope("apps.upgrade")}, Risk: RiskElevated, AutonomousAt: Autonomous}
 	if got := policy.Evaluate(spec).Decision; got != DecisionApproval {
 		t.Fatalf("elevated operation decision = %q, want approval_required", got)
 	}

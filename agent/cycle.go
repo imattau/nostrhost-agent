@@ -120,7 +120,7 @@ func (r CycleRunner) Run(ctx context.Context, request CycleRequest) (CycleTrace,
 		return r.finish(ctx, trace, now, "observation_failed", "could not collect structured observations", err)
 	}
 	trace.Observations = sanitizeMap(observations, nil)
-	trace.Capabilities = sortedCapabilities(r.Policy.Capabilities)
+	trace.Scopes = sortedScopes(r.Policy.Scopes)
 	if err := r.save(ctx, trace); err != nil {
 		return trace, fmt.Errorf("persist observations: %w", err)
 	}
@@ -314,12 +314,21 @@ func (r CycleRunner) Run(ctx context.Context, request CycleRequest) (CycleTrace,
 func (r CycleRunner) availableOperations() []OperationSpec {
 	operations := make([]OperationSpec, 0, len(r.Registry))
 	for _, spec := range r.Registry {
-		if r.Policy.Capabilities[spec.Capability] {
+		if operationScopesEnabled(r.Policy, spec) {
 			operations = append(operations, spec)
 		}
 	}
 	sort.Slice(operations, func(i, j int) bool { return operations[i].Name < operations[j].Name })
 	return operations
+}
+
+func operationScopesEnabled(policy Policy, spec OperationSpec) bool {
+	for _, scope := range spec.Scopes {
+		if !policy.Scopes[scope] {
+			return false
+		}
+	}
+	return true
 }
 
 func (r CycleRunner) finish(ctx context.Context, trace CycleTrace, now func() time.Time, result, resolution string, cause error) (CycleTrace, error) {
@@ -351,11 +360,11 @@ func (r CycleRunner) recordOutcome(ctx context.Context, trace CycleTrace, index 
 	return nil
 }
 
-func sortedCapabilities(capabilities map[Capability]bool) []Capability {
-	result := make([]Capability, 0, len(capabilities))
-	for capability, enabled := range capabilities {
+func sortedScopes(scopes map[Scope]bool) []Scope {
+	result := make([]Scope, 0, len(scopes))
+	for scope, enabled := range scopes {
 		if enabled {
-			result = append(result, capability)
+			result = append(result, scope)
 		}
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i] < result[j] })

@@ -82,9 +82,10 @@ func (t *RelayOperationTransport) PublishRequest(ctx context.Context, tool strin
 		return "", errors.New("operation name is required")
 	}
 	content, err := json.Marshal(struct {
-		Tool string         `json:"tool"`
-		Args map[string]any `json:"args"`
-	}{Tool: tool, Args: args})
+		Tool          string         `json:"tool"`
+		Args          map[string]any `json:"args"`
+		CatalogDigest string         `json:"catalog_digest"`
+	}{Tool: tool, Args: args, CatalogDigest: GeneratedCatalogDigest})
 	if err != nil {
 		return "", errors.New("operation request is not JSON-compatible")
 	}
@@ -143,8 +144,9 @@ func (t *RelayOperationTransport) AwaitResult(ctx context.Context, requestID str
 				return OperationResultEvent{}, err
 			}
 			var body struct {
-				OK     *bool          `json:"ok"`
-				Result map[string]any `json:"result"`
+				OK            *bool          `json:"ok"`
+				Result        map[string]any `json:"result"`
+				CatalogDigest string         `json:"catalog_digest"`
 			}
 			if err := json.Unmarshal([]byte(received.Content), &body); err != nil || body.OK == nil {
 				return OperationResultEvent{}, errors.New("execution result has an invalid payload")
@@ -152,7 +154,10 @@ func (t *RelayOperationTransport) AwaitResult(ctx context.Context, requestID str
 			if *body.OK && body.Result == nil {
 				return OperationResultEvent{}, errors.New("successful execution result is missing its structured result")
 			}
-			return OperationResultEvent{RequestID: requestID, Author: received.PubKey, OK: *body.OK, Result: body.Result}, nil
+			if body.CatalogDigest != GeneratedCatalogDigest {
+				return OperationResultEvent{}, errors.New("execution result catalogue digest mismatch")
+			}
+			return OperationResultEvent{RequestID: requestID, Author: received.PubKey, OK: *body.OK, Result: body.Result, CatalogDigest: body.CatalogDigest}, nil
 		}
 	}
 }

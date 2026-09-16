@@ -94,12 +94,12 @@ func (f *fakeAudit) Save(_ context.Context, trace CycleTrace) error {
 	return nil
 }
 
-func testRunner(level AutonomyLevel, capability Capability, planner *fakePlanner, executor *fakeExecutor, audit *fakeAudit) CycleRunner {
+func testRunner(level AutonomyLevel, scope Scope, planner *fakePlanner, executor *fakeExecutor, audit *fakeAudit) CycleRunner {
 	return CycleRunner{
-		Policy:   Policy{Level: level, Capabilities: map[Capability]bool{capability: true}},
+		Policy:   Policy{Level: level, Scopes: map[Scope]bool{scope: true}},
 		Registry: DefaultRegistry(),
 		Observer: fakeObserver{value: map[string]any{"service": "inactive"}},
-		Planner:  planner, Executor: executor, Verifier: &fakeVerifier{verified: true}, Audit: audit,
+		Planner:  planner, Executor: executor, Approvals: &fakeApprovals{approved: true}, Verifier: &fakeVerifier{verified: true}, Audit: audit,
 		Now:   func() time.Time { return time.Date(2026, 9, 12, 1, 0, 0, 0, time.UTC) },
 		NewID: func() (string, error) { return "test-cycle", nil },
 	}
@@ -110,7 +110,7 @@ func TestCycleRunnerExecutesOnlyAfterPolicyAndVerifies(t *testing.T) {
 	executor := &fakeExecutor{}
 	verifier := &fakeVerifier{verified: true}
 	audit := &fakeAudit{}
-	runner := testRunner(Maintain, ServiceRestart, planner, executor, audit)
+	runner := testRunner(Maintain, Scope("services.restart"), planner, executor, audit)
 	runner.Verifier = verifier
 
 	trace, err := runner.Run(context.Background(), CycleRequest{Trigger: "health_check_failed", Target: "web"})
@@ -136,7 +136,7 @@ func TestCycleRunnerExecutesOnlyAfterPolicyAndVerifies(t *testing.T) {
 
 func TestCycleRunnerRecordsCompletedPlannerNoCall(t *testing.T) {
 	planner := &fakePlanner{}
-	runner := testRunner(Assist, HealthRead, planner, &fakeExecutor{}, &fakeAudit{})
+	runner := testRunner(Assist, Scope("diagnosis.read"), planner, &fakeExecutor{}, &fakeAudit{})
 	trace, err := runner.Run(context.Background(), CycleRequest{Trigger: "scheduled"})
 	if err != nil {
 		t.Fatal(err)
@@ -149,7 +149,7 @@ func TestCycleRunnerRecordsCompletedPlannerNoCall(t *testing.T) {
 func TestCycleRunnerPassesSanitizedObservationsToVerifier(t *testing.T) {
 	planner := &fakePlanner{proposals: []Proposal{{Operation: "service.restart", Args: map[string]any{"name": "web"}}}}
 	verifier := &fakeVerifier{verified: true}
-	runner := testRunner(Maintain, ServiceRestart, planner, &fakeExecutor{}, &fakeAudit{})
+	runner := testRunner(Maintain, Scope("services.restart"), planner, &fakeExecutor{}, &fakeAudit{})
 	runner.Observer = fakeObserver{value: map[string]any{"status": "failed", "api_token": "secret"}}
 	runner.Verifier = verifier
 	if _, err := runner.Run(context.Background(), CycleRequest{Trigger: "health_check_failed"}); err != nil {
@@ -161,9 +161,9 @@ func TestCycleRunnerPassesSanitizedObservationsToVerifier(t *testing.T) {
 }
 
 func TestCycleRunnerAssistNeverExecutes(t *testing.T) {
-	planner := &fakePlanner{proposals: []Proposal{{Operation: "app.health", Args: map[string]any{"app": "photos"}}}}
+	planner := &fakePlanner{proposals: []Proposal{{Operation: "diagnosis.run", Args: map[string]any{}}}}
 	executor := &fakeExecutor{}
-	runner := testRunner(Assist, HealthRead, planner, executor, &fakeAudit{})
+	runner := testRunner(Assist, Scope("diagnosis.read"), planner, executor, &fakeAudit{})
 	runner.Observer = fakeObserver{value: map[string]any{"app": "photos", "api_token": "must-not-reach-planner"}}
 	trace, err := runner.Run(context.Background(), CycleRequest{Trigger: "scheduled"})
 	if err != nil {
@@ -178,7 +178,7 @@ func TestCycleRunnerAssistNeverExecutes(t *testing.T) {
 }
 
 func TestCycleRunnerInjectsRetrievedKnowledgeAndAuditsCitation(t *testing.T) {
-	planner := &fakePlanner{proposals: []Proposal{{Operation: "app.health", Args: map[string]any{"app": "photos"}}}}
+	planner := &fakePlanner{proposals: []Proposal{{Operation: "diagnosis.run", Args: map[string]any{}}}}
 	audit := &fakeAudit{}
 	retriever, err := NewLocalRetriever([]KnowledgeDocument{{
 		ID: "incident-17", Source: "verified-trace", Text: "A failed photo service recovered after checking its database dependency.",
@@ -186,7 +186,7 @@ func TestCycleRunnerInjectsRetrievedKnowledgeAndAuditsCitation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runner := testRunner(Assist, HealthRead, planner, &fakeExecutor{}, audit)
+	runner := testRunner(Assist, Scope("diagnosis.read"), planner, &fakeExecutor{}, audit)
 	runner.Retriever = retriever
 	trace, err := runner.Run(context.Background(), CycleRequest{Trigger: "photo service unhealthy", Target: "photos"})
 	if err != nil {
@@ -201,10 +201,10 @@ func TestCycleRunnerInjectsRetrievedKnowledgeAndAuditsCitation(t *testing.T) {
 }
 
 func TestCycleRunnerRequiresApprovalForDestructiveOperation(t *testing.T) {
-	planner := &fakePlanner{proposals: []Proposal{{Operation: "app.restore", Args: map[string]any{"app": "photos", "snapshot": "snapshot-1"}}}}
+	planner := &fakePlanner{proposals: []Proposal{{Operation: "backup.restore", Args: map[string]any{"name": "snapshot-1", "apps": []any{"photos"}}}}}
 	executor := &fakeExecutor{}
 	approvals := &fakeApprovals{approved: false}
-	runner := testRunner(Autonomous, AppRestore, planner, executor, &fakeAudit{})
+	runner := testRunner(Autonomous, Scope("backups.restore"), planner, executor, &fakeAudit{})
 	runner.Approvals = approvals
 	trace, err := runner.Run(context.Background(), CycleRequest{Trigger: "owner_request"})
 	if err != nil {
@@ -216,9 +216,10 @@ func TestCycleRunnerRequiresApprovalForDestructiveOperation(t *testing.T) {
 }
 
 func TestCycleRunnerDoesNotDelegateApprovalToGenericExecutor(t *testing.T) {
-	planner := &fakePlanner{proposals: []Proposal{{Operation: "app.restore", Args: map[string]any{"app": "photos", "snapshot": "snapshot-1"}}}}
+	planner := &fakePlanner{proposals: []Proposal{{Operation: "backup.restore", Args: map[string]any{"name": "snapshot-1", "apps": []any{"photos"}}}}}
 	executor := &fakeExecutor{}
-	runner := testRunner(Autonomous, AppRestore, planner, executor, &fakeAudit{})
+	runner := testRunner(Autonomous, Scope("backups.restore"), planner, executor, &fakeAudit{})
+	runner.Approvals = nil
 	trace, err := runner.Run(context.Background(), CycleRequest{Trigger: "owner_request"})
 	if err != nil {
 		t.Fatal(err)
@@ -229,11 +230,12 @@ func TestCycleRunnerDoesNotDelegateApprovalToGenericExecutor(t *testing.T) {
 }
 
 func TestCycleRunnerDelegatesRequestBoundApprovalToNostrHost(t *testing.T) {
-	planner := &fakePlanner{proposals: []Proposal{{Operation: "app.restore", Args: map[string]any{"app": "photos", "snapshot": "snapshot-1"}}}}
+	planner := &fakePlanner{proposals: []Proposal{{Operation: "backup.restore", Args: map[string]any{"name": "snapshot-1", "apps": []any{"photos"}}}}}
 	audit := &fakeAudit{}
 	operation := &approvalChainFakeExecutor{fakeExecutor: &fakeExecutor{}}
-	runner := testRunner(Autonomous, AppRestore, planner, operation.fakeExecutor, audit)
+	runner := testRunner(Autonomous, Scope("backups.restore"), planner, operation.fakeExecutor, audit)
 	runner.Executor = operation
+	runner.Approvals = nil
 	runner.Verifier = &fakeVerifier{verified: true}
 	trace, err := runner.Run(context.Background(), CycleRequest{Trigger: "owner_request"})
 	if err != nil {
@@ -254,7 +256,7 @@ func TestCycleRunnerDelegatesRequestBoundApprovalToNostrHost(t *testing.T) {
 }
 
 func TestCycleRunnerPersistsApprovalRequestBeforeExecution(t *testing.T) {
-	planner := &fakePlanner{proposals: []Proposal{{Operation: "app.restore", Args: map[string]any{"app": "photos", "snapshot": "snapshot-1"}}}}
+	planner := &fakePlanner{proposals: []Proposal{{Operation: "backup.restore", Args: map[string]any{"name": "snapshot-1", "apps": []any{"photos"}}}}}
 	executor := &fakeExecutor{}
 	verifier := &fakeVerifier{verified: true}
 	audit := &fakeAudit{}
@@ -264,7 +266,7 @@ func TestCycleRunnerPersistsApprovalRequestBeforeExecution(t *testing.T) {
 			t.Errorf("approval was requested before its decision was audited: %#v", audit.last)
 		}
 	}
-	runner := testRunner(Autonomous, AppRestore, planner, executor, audit)
+	runner := testRunner(Autonomous, Scope("backups.restore"), planner, executor, audit)
 	runner.Approvals = approvals
 	runner.Verifier = verifier
 	trace, err := runner.Run(context.Background(), CycleRequest{Trigger: "owner_request"})
@@ -280,7 +282,7 @@ func TestCycleRunnerAuditFailureBeforeExecutionStopsOperation(t *testing.T) {
 	planner := &fakePlanner{proposals: []Proposal{{Operation: "service.restart"}}}
 	executor := &fakeExecutor{}
 	audit := &fakeAudit{failAt: 4, err: errors.New("disk unavailable")}
-	_, err := testRunner(Maintain, ServiceRestart, planner, executor, audit).Run(context.Background(), CycleRequest{Trigger: "health_check_failed"})
+	_, err := testRunner(Maintain, Scope("services.restart"), planner, executor, audit).Run(context.Background(), CycleRequest{Trigger: "health_check_failed"})
 	if err == nil {
 		t.Fatal("expected audit persistence failure")
 	}
@@ -292,7 +294,7 @@ func TestCycleRunnerAuditFailureBeforeExecutionStopsOperation(t *testing.T) {
 func TestCycleRunnerObserveDoesNotInvokePlanner(t *testing.T) {
 	planner := &fakePlanner{proposals: []Proposal{{Operation: "app.health"}}}
 	audit := &fakeAudit{}
-	trace, err := testRunner(Observe, HealthRead, planner, &fakeExecutor{}, audit).Run(context.Background(), CycleRequest{Trigger: "scheduled"})
+	trace, err := testRunner(Observe, Scope("diagnosis.read"), planner, &fakeExecutor{}, audit).Run(context.Background(), CycleRequest{Trigger: "scheduled"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -306,7 +308,7 @@ func TestCycleRunnerTruncatesExcessPlannerOutput(t *testing.T) {
 		{Operation: "app.health", Args: map[string]any{"app": "photos"}},
 		{Operation: "app.health", Args: map[string]any{"app": "photos"}},
 	}}
-	runner := testRunner(Assist, HealthRead, planner, &fakeExecutor{}, &fakeAudit{})
+	runner := testRunner(Assist, Scope("diagnosis.read"), planner, &fakeExecutor{}, &fakeAudit{})
 	runner.MaxProposals = 8 // configuration cannot raise the per-cycle action bound
 	trace, err := runner.Run(context.Background(), CycleRequest{Trigger: "scheduled"})
 	if err != nil {
@@ -321,7 +323,7 @@ func TestCycleRunnerRejectsInvalidArgsBeforeApprovalOrExecution(t *testing.T) {
 	planner := &fakePlanner{proposals: []Proposal{{Operation: "service.restart", Args: map[string]any{"name": "web", "command": "rm -rf /"}}}}
 	executor := &fakeExecutor{}
 	approvals := &fakeApprovals{approved: true}
-	runner := testRunner(Autonomous, ServiceRestart, planner, executor, &fakeAudit{})
+	runner := testRunner(Autonomous, Scope("services.restart"), planner, executor, &fakeAudit{})
 	runner.Approvals = approvals
 	trace, err := runner.Run(context.Background(), CycleRequest{Trigger: "health_check_failed"})
 	if err != nil {
@@ -338,7 +340,7 @@ func TestDefaultRegistryPublishesAndEnforcesSchemas(t *testing.T) {
 		if !json.Valid([]byte(spec.ArgsSchema)) {
 			t.Errorf("%s has invalid JSON schema %q", name, spec.ArgsSchema)
 		}
-		if err := spec.ValidateArgs(map[string]any{}); err != nil && name == "system.health" {
+		if err := spec.ValidateArgs(map[string]any{}); err != nil && name == "system.status" {
 			t.Errorf("empty-argument read operation rejected: %v", err)
 		}
 	}
@@ -351,20 +353,20 @@ func TestDefaultRegistryPublishesAndEnforcesSchemas(t *testing.T) {
 }
 
 func TestOperationArgumentsHaveHardSizeLimit(t *testing.T) {
-	args := map[string]any{"app": strings.Repeat("a", maxOperationArgsBytes)}
-	if err := DefaultRegistry()["app.health"].ValidateArgs(args); err == nil {
+	args := map[string]any{"name": strings.Repeat("a", maxOperationArgsBytes)}
+	if err := DefaultRegistry()["service.status"].ValidateArgs(args); err == nil {
 		t.Fatal("oversized operation arguments accepted")
 	}
 }
 
 func TestAvailableOperationsAreDeterministic(t *testing.T) {
-	runner := testRunner(Maintain, HealthRead, &fakePlanner{}, &fakeExecutor{}, &fakeAudit{})
+	runner := testRunner(Maintain, Scope("diagnosis.read"), &fakePlanner{}, &fakeExecutor{}, &fakeAudit{})
 	got := runner.availableOperations()
 	names := make([]string, len(got))
 	for i := range got {
 		names[i] = got[i].Name
 	}
-	want := []string{"app.health", "system.health"}
+	want := []string{"diagnosis.run"}
 	if !reflect.DeepEqual(names, want) {
 		t.Fatalf("operations = %#v, want %#v", names, want)
 	}

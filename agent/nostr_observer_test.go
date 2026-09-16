@@ -26,12 +26,12 @@ func (e *recordingOperationExecutor) Execute(_ context.Context, spec OperationSp
 
 func TestNostrOperationObserverBuildsReadModelFromSelectedOperations(t *testing.T) {
 	executor := &recordingOperationExecutor{results: map[string]map[string]any{
-		"app.health":  {"status": "healthy"},
-		"disk.status": {"free_bytes": 1024},
+		"service.status": {"status": "healthy"},
+		"system.status":  {"free_bytes": 1024},
 	}}
 	observer, err := NewNostrOperationObserver(executor, nil, []ObservationQuery{
-		{Operation: "app.health", TargetArg: "app"},
-		{Operation: "disk.status"},
+		{Operation: "service.status", TargetArg: "name"},
+		{Operation: "system.status"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -40,10 +40,10 @@ func TestNostrOperationObserverBuildsReadModelFromSelectedOperations(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(executor.operations, []string{"app.health", "disk.status"}) {
+	if !reflect.DeepEqual(executor.operations, []string{"service.status", "system.status"}) {
 		t.Fatalf("unexpected read operation sequence: %#v", executor.operations)
 	}
-	if executor.args[0]["app"] != "photos" || observations["app.health"].(map[string]any)["ok"] != true {
+	if executor.args[0]["name"] != "photos" || observations["service.status"].(map[string]any)["ok"] != true {
 		t.Fatalf("target or read result missing: args=%#v observations=%#v", executor.args, observations)
 	}
 }
@@ -62,12 +62,12 @@ func TestNostrOperationObserverRejectsNonReadOperations(t *testing.T) {
 
 func TestNostrOperationObserverRecordsReadFailuresWithoutLeakingErrors(t *testing.T) {
 	executor := &recordingOperationExecutor{
-		results:  map[string]map[string]any{"disk.status": {"free_bytes": 100}},
-		failures: map[string]error{"app.health": errors.New("secret-bearing adapter detail")},
+		results:  map[string]map[string]any{"system.status": {"free_bytes": 100}},
+		failures: map[string]error{"service.status": errors.New("secret-bearing adapter detail")},
 	}
 	observer, err := NewNostrOperationObserver(executor, nil, []ObservationQuery{
-		{Operation: "app.health", TargetArg: "app"},
-		{Operation: "disk.status"},
+		{Operation: "service.status", TargetArg: "name"},
+		{Operation: "system.status"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -76,14 +76,14 @@ func TestNostrOperationObserverRecordsReadFailuresWithoutLeakingErrors(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	failure := observations["app.health"].(map[string]any)
+	failure := observations["service.status"].(map[string]any)
 	if failure["error"] != "read_failed" || failure["ok"] != false {
 		t.Fatalf("failed read was not safely represented: %#v", failure)
 	}
 	if _, leaked := failure["detail"]; leaked {
 		t.Fatalf("adapter error detail leaked to observations: %#v", failure)
 	}
-	if observations["disk.status"].(map[string]any)["ok"] != true {
+	if observations["system.status"].(map[string]any)["ok"] != true {
 		t.Fatalf("a failed query prevented remaining observations: %#v", observations)
 	}
 }

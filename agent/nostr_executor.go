@@ -10,10 +10,11 @@ import (
 // OperationResultEvent is the verified projection of one kind-2204 event.
 // RequestID comes from its e-tag; Author is the event's verified pubkey.
 type OperationResultEvent struct {
-	RequestID string
-	Author    string
-	OK        bool
-	Result    map[string]any
+	RequestID     string
+	Author        string
+	OK            bool
+	Result        map[string]any
+	CatalogDigest string
 }
 
 // OperationTransport publishes a signed kind-2200 request and waits for its
@@ -28,7 +29,7 @@ type OperationTransport interface {
 
 // NostrOperationExecutor adapts the cycle runner to NostrHost's signed
 // operation chain. The authoritative operation daemon still evaluates its own
-// capabilities, approvals, and typed handler before changing machine state.
+// scopes, approvals, and typed handler before changing machine state.
 type NostrOperationExecutor struct {
 	Transport            OperationTransport
 	ExpectedServerPubkey string
@@ -109,6 +110,9 @@ func (e NostrOperationExecutor) Execute(ctx context.Context, spec OperationSpec,
 	}
 	if !strings.EqualFold(result.Author, e.ExpectedServerPubkey) {
 		return nil, errors.New("operation result was not authored by the configured control-plane server")
+	}
+	if result.CatalogDigest != GeneratedCatalogDigest {
+		return nil, errors.New("operation result catalogue digest does not match the generated contract")
 	}
 	if !result.OK {
 		return nil, errors.New("NostrHost operation was rejected or failed")

@@ -12,10 +12,11 @@ import (
 const maxRuntimeConfigBytes = 256 * 1024
 
 type RuntimeFileConfig struct {
+	SchemaVersion       int                    `json:"schema_version"`
 	Relay               RelayFileConfig        `json:"relay"`
 	Inference           InferenceFileConfig    `json:"inference,omitempty"`
 	Embeddings          EmbeddingFileConfig    `json:"embeddings,omitempty"`
-	Policy              Policy                 `json:"policy"`
+	Policy              PolicyFileConfig       `json:"policy"`
 	ObservationQueries  []ObservationQuery     `json:"observation_queries"`
 	VerificationRules   []VerificationRule     `json:"verification_rules,omitempty"`
 	KnowledgeCorpusPath string                 `json:"knowledge_corpus_path,omitempty"`
@@ -25,6 +26,11 @@ type RuntimeFileConfig struct {
 	ListenForEvents     bool                   `json:"listen_for_events,omitempty"`
 	EventLookback       string                 `json:"event_lookback,omitempty"`
 	Contribution        ContributionFileConfig `json:"contribution,omitempty"`
+}
+
+type PolicyFileConfig struct {
+	Level  AutonomyLevel  `json:"level"`
+	Scopes map[Scope]bool `json:"scopes"`
 }
 
 // ContributionFileConfig is the resident daemon's own, operator-set
@@ -79,6 +85,9 @@ func LoadRuntimeConfig(path string) (RuntimeConfig, error) {
 	if err := decoder.Decode(&config); err != nil {
 		return RuntimeConfig{}, errors.New("runtime config contains invalid JSON or unknown fields")
 	}
+	if config.SchemaVersion != 2 {
+		return RuntimeConfig{}, errors.New("agent config schema_version must be 2; legacy policy.scopes configs are unsupported")
+	}
 	if err := decoder.Decode(new(any)); err != io.EOF {
 		return RuntimeConfig{}, errors.New("runtime config must contain one JSON value")
 	}
@@ -129,7 +138,8 @@ func LoadRuntimeConfig(path string) (RuntimeConfig, error) {
 			TrustedServerKey: config.Relay.TrustedServerKey, TargetPubkey: config.Relay.TargetPubkey,
 			ResultTimeout: resultTimeout,
 		},
-		Inference: inference, Embeddings: embeddings, Policy: config.Policy,
+		Inference: inference, Embeddings: embeddings,
+		Policy:             Policy{Level: config.Policy.Level, Scopes: config.Policy.Scopes},
 		ObservationQueries: config.ObservationQueries, VerificationRules: config.VerificationRules,
 		KnowledgeCorpusPath: config.KnowledgeCorpusPath, AuditPath: config.AuditPath,
 		Interval: interval, RunImmediately: config.RunImmediately,

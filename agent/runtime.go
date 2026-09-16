@@ -74,14 +74,22 @@ func ValidateRuntimeConfig(cfg RuntimeConfig) error {
 	}
 	for _, query := range cfg.ObservationQueries {
 		spec, exists := registry[query.Operation]
-		if exists && !cfg.Policy.Capabilities[spec.Capability] {
-			return fmt.Errorf("observation query %q requires disabled local capability %q", query.Operation, spec.Capability)
+		if exists {
+			for _, scope := range spec.Scopes {
+				if !cfg.Policy.Scopes[scope] {
+					return fmt.Errorf("observation query %q requires disabled local scope %q", query.Operation, scope)
+				}
+			}
 		}
 	}
 	for _, rule := range cfg.VerificationRules {
 		spec, exists := registry[rule.CheckOperation]
-		if exists && !cfg.Policy.Capabilities[spec.Capability] {
-			return fmt.Errorf("verification check %q requires disabled local capability %q", rule.CheckOperation, spec.Capability)
+		if exists {
+			for _, scope := range spec.Scopes {
+				if !cfg.Policy.Scopes[scope] {
+					return fmt.Errorf("verification check %q requires disabled local scope %q", rule.CheckOperation, scope)
+				}
+			}
 		}
 	}
 	return nil
@@ -167,12 +175,12 @@ func NewResidentRuntime(cfg RuntimeConfig) (*ResidentRuntime, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create verified history retriever: %w", err)
 	}
-	capabilities := make(map[Capability]bool, len(cfg.Policy.Capabilities))
-	for capability, enabled := range cfg.Policy.Capabilities {
-		capabilities[capability] = enabled
+	scopes := make(map[Scope]bool, len(cfg.Policy.Scopes))
+	for scope, enabled := range cfg.Policy.Scopes {
+		scopes[scope] = enabled
 	}
 	runner := CycleRunner{
-		Policy:   Policy{Level: cfg.Policy.Level, Capabilities: capabilities},
+		Policy:   Policy{Level: cfg.Policy.Level, Scopes: scopes},
 		Registry: registry, Observer: observer, Planner: planner, Retriever: retriever,
 		Executor: executor, Approvals: cfg.Approvals, Verifier: verifier,
 		Audit: audit,

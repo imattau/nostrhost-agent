@@ -11,7 +11,7 @@ func TestResidentServiceRunsStartupCycleAndShutsDown(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	service := ResidentService{
-		Runner:         testRunner(Observe, HealthRead, nil, nil, &fakeAudit{}),
+		Runner:         testRunner(Observe, Scope("diagnosis.read"), nil, nil, &fakeAudit{}),
 		RunImmediately: true,
 		OnCycle: func(trace CycleTrace, err error) {
 			if err != nil || trace.Result != "observed" || trace.Trigger != "service_started" {
@@ -32,7 +32,7 @@ func TestResidentServiceHandlesReactiveAndPeriodicTriggers(t *testing.T) {
 		triggers := make(chan CycleRequest, 1)
 		triggers <- CycleRequest{Trigger: "health_check_failed", Target: "web"}
 		service := ResidentService{
-			Runner:   testRunner(Observe, HealthRead, nil, nil, &fakeAudit{}),
+			Runner:   testRunner(Observe, Scope("diagnosis.read"), nil, nil, &fakeAudit{}),
 			Triggers: triggers,
 			OnCycle: func(trace CycleTrace, err error) {
 				if err != nil || trace.Trigger != "health_check_failed" || trace.Target != "web" {
@@ -50,7 +50,7 @@ func TestResidentServiceHandlesReactiveAndPeriodicTriggers(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		service := ResidentService{
-			Runner:   testRunner(Observe, HealthRead, nil, nil, &fakeAudit{}),
+			Runner:   testRunner(Observe, Scope("diagnosis.read"), nil, nil, &fakeAudit{}),
 			Interval: 5 * time.Millisecond,
 			OnCycle: func(trace CycleTrace, err error) {
 				if err != nil || trace.Trigger != scheduledMaintenanceTrigger {
@@ -69,7 +69,7 @@ func TestResidentServiceStopsOnCycleError(t *testing.T) {
 	triggers := make(chan CycleRequest, 1)
 	triggers <- CycleRequest{Trigger: "scheduled"}
 	service := ResidentService{
-		Runner:   testRunner(Observe, HealthRead, nil, nil, &fakeAudit{failAt: 1, err: errors.New("audit unavailable")}),
+		Runner:   testRunner(Observe, Scope("diagnosis.read"), nil, nil, &fakeAudit{failAt: 1, err: errors.New("audit unavailable")}),
 		Triggers: triggers,
 	}
 	err := service.Run(context.Background())
@@ -79,7 +79,7 @@ func TestResidentServiceStopsOnCycleError(t *testing.T) {
 }
 
 func TestResidentServicePreflightsMaintenanceRequirements(t *testing.T) {
-	runner := testRunner(Maintain, ServiceRestart, &fakePlanner{}, nil, &fakeAudit{})
+	runner := testRunner(Maintain, Scope("services.restart"), &fakePlanner{}, nil, &fakeAudit{})
 	runner.Executor = nil
 	runner.Verifier = nil
 	service := ResidentService{Runner: runner}
