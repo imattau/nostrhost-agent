@@ -25,6 +25,7 @@ func TestNsiteReadsRegisteredAndWritesAbsent(t *testing.T) {
 	reads := []string{
 		"nsite.gateway.status",
 		"nsite.list",
+		"nsite.discover",
 		"nsite.inspect",
 		"nsite.resolve",
 		"nsite.validate_manifest",

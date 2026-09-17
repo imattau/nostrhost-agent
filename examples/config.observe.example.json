@@ -13,7 +13,10 @@
     }
   },
   "observation_queries": [
-    {"operation": "service.status"}
+    {"operation": "service.status"},
+    {"operation": "nsite.gateway.status"},
+    {"operation": "nsite.list"},
+    {"operation": "nsite.discover"}
   ],
   "audit_path": "/var/lib/nostrhost-agent/audit.jsonl",
   "interval": "6h",
