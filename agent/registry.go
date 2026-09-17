@@ -38,7 +38,7 @@ var agentOperationProfile = map[string]AutonomyLevel{
 	"nsite.inspect": Maintain,
 	"nsite.resolve": Maintain, "nsite.validate_manifest": Maintain,
 	"nsite.reachability": Maintain, "nsite.publish.plan": Maintain,
-	"nsite.domain.list": Maintain,
+	"nsite.domain.list": Maintain, "nsite.block.list": Maintain,
 }
 
 func generatedAgentRegistry() map[string]OperationSpec {
