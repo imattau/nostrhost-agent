@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -164,8 +165,12 @@ func serverPathIfInstalled(path string, statErr error) string {
 }
 
 // extractRuntimeArchive unpacks an already hash-verified tar.gz into
-// destination, flattening the archive's single top-level directory. It
-// refuses path traversal, symlinks, and any entry outside destination.
+// destination, flattening the archive's single top-level directory. Upstream
+// llama.cpp archives use relative symlinks for shared-library sonames. We
+// materialize those as hard links after extracting their regular-file targets,
+// preserving a symlink-free runtime without dropping files the loader needs.
+// Path traversal and links whose targets aren't extracted regular files remain
+// forbidden.
 func extractRuntimeArchive(archivePath, destination, requiredBinary string) error {
 	file, err := os.Open(archivePath)
 	if err != nil {
@@ -181,6 +186,11 @@ func extractRuntimeArchive(archivePath, destination, requiredBinary string) erro
 		return err
 	}
 	sawBinary := false
+	type pendingLink struct {
+		name   string
+		target string
+	}
+	var links []pendingLink
 	reader := tar.NewReader(gzipReader)
 	for {
 		header, err := reader.Next()
@@ -190,7 +200,7 @@ func extractRuntimeArchive(archivePath, destination, requiredBinary string) erro
 		if err != nil {
 			return err
 		}
-		if header.Typeflag == tar.TypeSymlink || header.Typeflag == tar.TypeLink {
+		if header.Typeflag == tar.TypeLink {
 			continue
 		}
 		relative := header.Name
@@ -238,6 +248,39 @@ func extractRuntimeArchive(archivePath, destination, requiredBinary string) erro
 			if relative == requiredBinary {
 				sawBinary = true
 			}
+		case tar.TypeSymlink:
+			// Resolve the archive link lexically before flattening the common
+			// top-level directory. Absolute paths and any path escaping that
+			// directory are discarded.
+			if path.IsAbs(header.Linkname) {
+				continue
+			}
+			targetName := path.Clean(path.Join(path.Dir(header.Name), header.Linkname))
+			if targetName == "." || targetName == ".." || strings.HasPrefix(targetName, "../") {
+				continue
+			}
+			targetRelative := targetName
+			if slash := strings.IndexByte(targetRelative, '/'); slash >= 0 {
+				targetRelative = targetRelative[slash+1:]
+			}
+			if targetRelative == "" || strings.Contains(targetRelative, "..") || filepath.IsAbs(targetRelative) {
+				continue
+			}
+			links = append(links, pendingLink{name: relative, target: filepath.Clean(targetRelative)})
+		}
+	}
+	for _, link := range links {
+		target := filepath.Join(destination, link.target)
+		info, err := os.Lstat(target)
+		if err != nil || !info.Mode().IsRegular() {
+			return fmt.Errorf("runtime link %q has no extracted regular-file target %q", link.name, link.target)
+		}
+		name := filepath.Join(destination, link.name)
+		if err := os.MkdirAll(filepath.Dir(name), 0o755); err != nil {
+			return err
+		}
+		if err := os.Link(target, name); err != nil {
+			return fmt.Errorf("materialize runtime link %q: %w", link.name, err)
 		}
 	}
 	if !sawBinary {
