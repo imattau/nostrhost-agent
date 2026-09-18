@@ -90,7 +90,7 @@ func TestLoadRuntimeConfigAppliesContributionDefaultsWhenEnabled(t *testing.T) {
 	if !config.Contribution.Enabled || config.Contribution.DatasetRepo != "owner/dataset" {
 		t.Fatalf("contribution settings not parsed: %#v", config.Contribution)
 	}
-	if config.Contribution.TokenPath != "/etc/nostrhost-agent/hf_token" || config.Contribution.BaseRevision != "main" ||
+	if config.Contribution.TokenPath != "/etc/nostrhost-agent/github_token" || config.Contribution.BaseRevision != "main" ||
 		config.Contribution.StatePath != "/var/lib/nostrhost-agent/contribution-submitted.jsonl" {
 		t.Fatalf("contribution defaults were not applied: %#v", config.Contribution)
 	}

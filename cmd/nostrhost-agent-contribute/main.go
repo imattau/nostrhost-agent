@@ -29,14 +29,14 @@ func main() {
 func run() error {
 	flags := flag.NewFlagSet("nostrhost-agent-contribute", flag.ContinueOnError)
 	candidate := flags.String("candidate", "", "path to a contribution candidate written by nostrhost-agent-export")
-	tokenFile := flags.String("token-file", "", "root-only file containing the Hugging Face token")
-	repo := flags.String("repo", "", "Hugging Face dataset repo, e.g. owner/dataset")
-	baseRevision := flags.String("base-revision", "main", "dataset branch to open the pull request against")
+	tokenFile := flags.String("token-file", "", "root-only file containing the GitHub token")
+	repo := flags.String("repo", "", "GitHub repository, e.g. owner/repo")
+	baseRevision := flags.String("base-revision", "main", "repository branch to open the pull request against")
 	if err := flags.Parse(os.Args[1:]); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 || *candidate == "" || *tokenFile == "" || *repo == "" {
-		return fmt.Errorf("usage: nostrhost-agent-contribute --candidate PATH --token-file PATH --repo OWNER/DATASET [--base-revision BRANCH]")
+		return fmt.Errorf("usage: nostrhost-agent-contribute --candidate PATH --token-file PATH --repo OWNER/REPO [--base-revision BRANCH]")
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()

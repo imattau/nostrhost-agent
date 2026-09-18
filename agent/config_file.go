@@ -35,8 +35,8 @@ type PolicyFileConfig struct {
 
 // ContributionFileConfig is the resident daemon's own, operator-set
 // contribution config. When Enabled, the daemon submits every completed
-// cycle as a Hugging Face pull request itself, with no per-cycle human
-// review -- see ContributionAutoSubmitter. Off by default.
+// cycle as a GitHub pull request itself, with no per-cycle human review --
+// see ContributionAutoSubmitter. Off by default.
 type ContributionFileConfig struct {
 	Enabled      bool   `json:"enabled,omitempty"`
 	DatasetRepo  string `json:"dataset_repo,omitempty"`
@@ -123,7 +123,7 @@ func LoadRuntimeConfig(path string) (RuntimeConfig, error) {
 			return RuntimeConfig{}, errors.New("contribution.dataset_repo must look like <owner>/<name> when contribution.enabled is true")
 		}
 		if contribution.TokenPath == "" {
-			contribution.TokenPath = "/etc/nostrhost-agent/hf_token"
+			contribution.TokenPath = "/etc/nostrhost-agent/github_token"
 		}
 		if contribution.BaseRevision == "" {
 			contribution.BaseRevision = "main"

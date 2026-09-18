@@ -13,7 +13,7 @@ import (
 )
 
 // ContributionAutoSubmitter submits every eligible completed cycle as a
-// Hugging Face pull request with no per-cycle human review — the operator
+// GitHub pull request with no per-cycle human review — the operator
 // opts into this explicitly via config.Contribution.Enabled, off by
 // default. It tracks which cycle IDs it has already submitted in a local
 // state file so a daemon restart, or the same cycle being reported twice,
@@ -30,16 +30,16 @@ type ContributionAutoSubmitter struct {
 	Config ContributionFileConfig
 	Client *http.Client
 
-	// hubBaseURL defaults to the real Hugging Face API and is only
-	// overridden in tests, so the commit request can be pointed at a local
+	// apiBaseURL defaults to the real GitHub REST API and is only
+	// overridden in tests, so the request can be pointed at a local
 	// stub server instead of the network.
-	hubBaseURL string
+	apiBaseURL string
 
 	mu        sync.Mutex
 	submitted map[string]bool
 }
 
-const defaultHubBaseURL = "https://huggingface.co"
+const defaultGitHubAPIBaseURL = "https://api.github.com"
 
 // NewContributionAutoSubmitter loads the dedup state file, if any, and
 // returns a ready submitter. A missing state file is not an error.
@@ -47,7 +47,7 @@ func NewContributionAutoSubmitter(cfg ContributionFileConfig) (*ContributionAuto
 	submitter := &ContributionAutoSubmitter{
 		Config:     cfg,
 		Client:     &http.Client{Timeout: 60 * time.Second},
-		hubBaseURL: defaultHubBaseURL,
+		apiBaseURL: defaultGitHubAPIBaseURL,
 		submitted:  make(map[string]bool),
 	}
 	if err := submitter.loadState(); err != nil {
@@ -106,7 +106,7 @@ func (s *ContributionAutoSubmitter) OnCycle(trace CycleTrace, cycleErr error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	prURL, err := submitCandidatePR(ctx, s.Client, s.hubBaseURL, s.Config.TokenPath, s.Config.DatasetRepo, s.Config.BaseRevision, candidate)
+	prURL, err := submitCandidatePR(ctx, s.Client, s.apiBaseURL, s.Config.TokenPath, s.Config.DatasetRepo, s.Config.BaseRevision, candidate)
 	if err != nil {
 		log.Printf("nostrhost-agent: automatic contribution failed for cycle %s: %v", trace.ID, err)
 		return
