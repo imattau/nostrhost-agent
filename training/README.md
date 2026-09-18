@@ -46,3 +46,26 @@ Run the deterministic comparison without dispatching any proposals:
 ```
 
 The trainer refuses non-lab rows, non-synthetic provenance, and positive operations outside the verified operations registered in the acquisition plan. The evaluator keeps `lab_test` out of training and model selection and also checks the frozen regression suite. The run record and rejection rationale are in [`experiment-2026-09-12-current-nostrhost.md`](experiment-2026-09-12-current-nostrhost.md). A passing script run is not a promotion decision; use the gates and current rejection in the training-regime document.
+
+## Labeling contributions (production bridge)
+
+[`label_candidate.py`](label_candidate.py) converts a
+`nostrhost-agent-contribution/v1` candidate into a `trace.schema.json` row with
+a conservative, evidence-grounded heuristic label: a no-call is labeled from an
+observation showing the target healthy or genuinely ambiguous, and a positive
+operation is labeled only when the candidate records a matching proposal whose
+outcome is `verified`. Approval-gated, unregistered, or unverified proposals are
+never promoted to a positive label; an unverified positive is refused because the
+trace contract forbids a positive target without verification. Rows stay
+non-trainable (`split: "excluded"`) while the candidate still carries
+`privacy_review_required: true`; `--assume-redacted` is only for an operator who
+asserts client-side redaction is sufficient.
+
+```sh
+python3 training/label_candidate.py candidate-*.json --output /tmp/labeled.jsonl
+python3 -m pytest training/test_label_candidate.py -q
+```
+
+With the current contribution corpus this yields zero trainable rows: all seven
+canonical candidates are `proposal_only` with `verified: null`. See
+[`validation-2026-09-18-rejected-adapter.md`](validation-2026-09-18-rejected-adapter.md).
