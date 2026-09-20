@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	protocol "github.com/imattau/nostrhost-protocol/go"
 	"github.com/nbd-wtf/go-nostr"
 )
 
@@ -46,7 +47,7 @@ func (s *NostrEventTriggerSource) Start(ctx context.Context) <-chan CycleRequest
 	}
 	since := nostr.Timestamp(time.Now().Add(-s.lookback).Unix())
 	events := s.transport.pool.SubscribeMany(ctx, []string{s.transport.relayURL}, nostr.Filter{
-		Kinds: []int{2210, 2211, 2212, 2213}, Authors: []string{s.transport.trustedServerKey},
+		Kinds: []int{protocol.KindSystemEvent, protocol.KindServiceEvent, protocol.KindBackupEvent, protocol.KindSecurityEvent}, Authors: []string{s.transport.trustedServerKey},
 		Since: &since, Limit: 256,
 	})
 	go s.forward(ctx, events, triggers)
@@ -100,13 +101,13 @@ func projectNoticeTrigger(event *nostr.Event, trustedServerKey string) (CycleReq
 	}
 	trigger := ""
 	switch event.Kind {
-	case 2210:
+	case protocol.KindSystemEvent:
 		trigger = "system_event"
-	case 2211:
+	case protocol.KindServiceEvent:
 		trigger = "service_event"
-	case 2212:
+	case protocol.KindBackupEvent:
 		trigger = "backup_event"
-	case 2213:
+	case protocol.KindSecurityEvent:
 		trigger = "security_event"
 	default:
 		return CycleRequest{}, false

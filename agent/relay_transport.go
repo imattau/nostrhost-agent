@@ -10,12 +10,15 @@ import (
 	"strings"
 	"time"
 
+	protocol "github.com/imattau/nostrhost-protocol/go"
 	"github.com/nbd-wtf/go-nostr"
 )
 
 const (
-	kindOperationRequest = 2200
-	kindExecutionResult  = 2204
+	// Deprecated aliases (one release): prefer protocol.KindOperationRequest /
+	// protocol.KindExecutionResult.
+	kindOperationRequest = protocol.KindOperationRequest
+	kindExecutionResult  = protocol.KindExecutionResult
 	defaultResultTimeout = 2 * time.Minute
 )
 
