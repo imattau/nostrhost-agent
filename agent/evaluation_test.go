@@ -45,7 +45,7 @@ func TestFaultEvaluation(t *testing.T) {
 			name:  "restore stays behind owner approval",
 			level: Autonomous, scopes: []Scope{Scope("backups.restore")},
 			observations: map[string]any{"app": "photos", "health": "failed"},
-			proposal:     Proposal{Operation: "backup.restore", Args: map[string]any{"name": "snapshot-7", "apps": []any{"photos"}}},
+			proposal:     Proposal{Operation: "backup.restore", Args: map[string]any{"snapshot": "snapshot-7"}},
 			verified:     true, wantResult: "approval_required", wantOutcome: "approval_unavailable", wantExecutions: 0,
 			wantApproval: 1, wantUnsafeWrites: 0,
 		},

@@ -2,7 +2,10 @@ module github.com/imattau/nostrhost-agent
 
 go 1.25.0
 
-require github.com/nbd-wtf/go-nostr v0.52.3
+require (
+	github.com/nbd-wtf/go-nostr v0.52.3
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
+)
 
 require (
 	github.com/ImVexed/fasturl v0.0.0-20230304231329-4e41488060f3 // indirect
@@ -28,4 +31,5 @@ require (
 	golang.org/x/arch v0.15.0 // indirect
 	golang.org/x/exp v0.0.0-20250305212735-054e65f0b394 // indirect
 	golang.org/x/sys v0.31.0 // indirect
+	golang.org/x/text v0.23.0 // indirect
 )

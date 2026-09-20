@@ -168,8 +168,8 @@
     ],
     "expected_operation": "backup.create",
     "expected_args": {
-      "apps": [
-        "photos"
+      "paths": [
+        "/var/lib/photos"
       ]
     }
   },

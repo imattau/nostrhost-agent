@@ -201,7 +201,7 @@ func TestCycleRunnerInjectsRetrievedKnowledgeAndAuditsCitation(t *testing.T) {
 }
 
 func TestCycleRunnerRequiresApprovalForDestructiveOperation(t *testing.T) {
-	planner := &fakePlanner{proposals: []Proposal{{Operation: "backup.restore", Args: map[string]any{"name": "snapshot-1", "apps": []any{"photos"}}}}}
+	planner := &fakePlanner{proposals: []Proposal{{Operation: "backup.restore", Args: map[string]any{"snapshot": "snapshot-1"}}}}
 	executor := &fakeExecutor{}
 	approvals := &fakeApprovals{approved: false}
 	runner := testRunner(Autonomous, Scope("backups.restore"), planner, executor, &fakeAudit{})
@@ -216,7 +216,7 @@ func TestCycleRunnerRequiresApprovalForDestructiveOperation(t *testing.T) {
 }
 
 func TestCycleRunnerDoesNotDelegateApprovalToGenericExecutor(t *testing.T) {
-	planner := &fakePlanner{proposals: []Proposal{{Operation: "backup.restore", Args: map[string]any{"name": "snapshot-1", "apps": []any{"photos"}}}}}
+	planner := &fakePlanner{proposals: []Proposal{{Operation: "backup.restore", Args: map[string]any{"snapshot": "snapshot-1"}}}}
 	executor := &fakeExecutor{}
 	runner := testRunner(Autonomous, Scope("backups.restore"), planner, executor, &fakeAudit{})
 	runner.Approvals = nil
@@ -230,7 +230,7 @@ func TestCycleRunnerDoesNotDelegateApprovalToGenericExecutor(t *testing.T) {
 }
 
 func TestCycleRunnerDelegatesRequestBoundApprovalToNostrHost(t *testing.T) {
-	planner := &fakePlanner{proposals: []Proposal{{Operation: "backup.restore", Args: map[string]any{"name": "snapshot-1", "apps": []any{"photos"}}}}}
+	planner := &fakePlanner{proposals: []Proposal{{Operation: "backup.restore", Args: map[string]any{"snapshot": "snapshot-1"}}}}
 	audit := &fakeAudit{}
 	operation := &approvalChainFakeExecutor{fakeExecutor: &fakeExecutor{}}
 	runner := testRunner(Autonomous, Scope("backups.restore"), planner, operation.fakeExecutor, audit)
@@ -256,7 +256,7 @@ func TestCycleRunnerDelegatesRequestBoundApprovalToNostrHost(t *testing.T) {
 }
 
 func TestCycleRunnerPersistsApprovalRequestBeforeExecution(t *testing.T) {
-	planner := &fakePlanner{proposals: []Proposal{{Operation: "backup.restore", Args: map[string]any{"name": "snapshot-1", "apps": []any{"photos"}}}}}
+	planner := &fakePlanner{proposals: []Proposal{{Operation: "backup.restore", Args: map[string]any{"snapshot": "snapshot-1"}}}}
 	executor := &fakeExecutor{}
 	verifier := &fakeVerifier{verified: true}
 	audit := &fakeAudit{}

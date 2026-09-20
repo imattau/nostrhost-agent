@@ -1,11 +1,12 @@
 package agent
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
-	"math"
-	"reflect"
 	"strings"
+
+	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 type generatedCatalogDocument struct {
@@ -65,6 +66,10 @@ func generatedAgentRegistry() map[string]OperationSpec {
 			scopes = append(scopes, Scope(scope))
 		}
 		schema := append([]byte(nil), operation.InputSchema...)
+		validate, err := compileArgumentValidator(schema)
+		if err != nil {
+			panic(fmt.Sprintf("operation %q has an invalid argument schema: %v", operation.Name, err))
+		}
 		spec := OperationSpec{
 			Name: operation.Name, ContractVersion: operation.ContractVersion,
 			Description: operation.Description, Scopes: scopes,
@@ -72,9 +77,7 @@ func generatedAgentRegistry() map[string]OperationSpec {
 			RequiresApproval: operation.Approval.Minimum != "none",
 			ArgsSchema:       string(schema), ResultSchema: string(operation.ResultSchema),
 		}
-		registry[operation.Name] = NewOperationSpec(spec, func(args map[string]any) error {
-			return validateGeneratedArguments(schema, args)
-		})
+		registry[operation.Name] = NewOperationSpec(spec, validate)
 	}
 	if len(registry) != len(agentOperationProfile) {
 		panic("generated catalogue is missing an agent-profile operation")
@@ -82,66 +85,46 @@ func generatedAgentRegistry() map[string]OperationSpec {
 	return registry
 }
 
-func validateGeneratedArguments(raw []byte, args map[string]any) error {
-	var schema struct {
-		Properties           map[string]json.RawMessage `json:"properties"`
-		Required             []string                   `json:"required"`
-		AdditionalProperties any                        `json:"additionalProperties"`
+// compileArgumentValidator compiles a JSON Schema once and returns a validator
+// that checks a decoded-args map against it. JSON Schema handles structural
+// conformance (types, enum, anyOf, required, additionalProperties, bounds,
+// items); project-specific semantic rules that are not expressible in the
+// generated schemas are applied on top (see non-empty string handling below).
+func compileArgumentValidator(raw []byte) (ArgumentValidator, error) {
+	compiler := jsonschema.NewCompiler()
+	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(raw))
+	if err != nil {
+		return nil, fmt.Errorf("invalid generated argument schema")
 	}
-	if err := json.Unmarshal(raw, &schema); err != nil {
-		return fmt.Errorf("invalid generated argument schema")
+	if err := compiler.AddResource("args.json", doc); err != nil {
+		return nil, err
 	}
-	for _, name := range schema.Required {
-		if _, exists := args[name]; !exists {
-			return fmt.Errorf("missing required argument %q", name)
+	compiled, err := compiler.Compile("args.json")
+	if err != nil {
+		return nil, err
+	}
+	return func(args map[string]any) error {
+		// Project-specific semantic rule preserved outside JSON Schema: a
+		// supplied string argument must be non-empty (the generated schemas
+		// do not carry a minLength keyword).
+		for name, value := range args {
+			if text, ok := value.(string); ok && strings.TrimSpace(text) == "" {
+				return fmt.Errorf("argument %q must be non-empty", name)
+			}
 		}
-	}
-	for name, value := range args {
-		property, exists := schema.Properties[name]
-		if !exists {
-			return fmt.Errorf("unexpected argument %q", name)
+		encoded, err := json.Marshal(args)
+		if err != nil {
+			return fmt.Errorf("operation arguments are not JSON-compatible")
 		}
-		if err := validateGeneratedValue(name, property, value); err != nil {
+		instance, err := jsonschema.UnmarshalJSON(bytes.NewReader(encoded))
+		if err != nil {
 			return err
 		}
-	}
-	return nil
-}
-
-func validateGeneratedValue(name string, raw json.RawMessage, value any) error {
-	var schema struct {
-		Type  string            `json:"type"`
-		Enum  []any             `json:"enum"`
-		AnyOf []json.RawMessage `json:"anyOf"`
-	}
-	if err := json.Unmarshal(raw, &schema); err != nil {
-		return fmt.Errorf("invalid schema for argument %q", name)
-	}
-	if len(schema.AnyOf) > 0 {
-		for _, candidate := range schema.AnyOf {
-			if validateGeneratedValue(name, candidate, value) == nil {
-				return nil
-			}
+		if err := compiled.Validate(instance); err != nil {
+			return fmt.Errorf("argument validation failed: %v", err)
 		}
-		return fmt.Errorf("argument %q does not match an allowed type", name)
-	}
-	if len(schema.Enum) > 0 {
-		encoded, _ := json.Marshal(value)
-		for _, allowed := range schema.Enum {
-			candidate, _ := json.Marshal(allowed)
-			if string(encoded) == string(candidate) {
-				return nil
-			}
-		}
-		return fmt.Errorf("argument %q is not an allowed value", name)
-	}
-	if schema.Type == "null" && value == nil {
 		return nil
-	}
-	if schema.Type == "" {
-		return nil
-	}
-	return validateArgument(name, schema.Type, value)
+	}, nil
 }
 
 // ArgumentValidator checks JSON-shaped arguments against a host-owned schema.
@@ -188,116 +171,4 @@ func ValidateRegistry(registry map[string]OperationSpec) error {
 		}
 	}
 	return nil
-}
-
-func definedOperation(spec OperationSpec, required, optional map[string]string) OperationSpec {
-	properties := make(map[string]map[string]string, len(required)+len(optional))
-	for name, kind := range required {
-		properties[name] = map[string]string{"type": kind}
-	}
-	for name, kind := range optional {
-		properties[name] = map[string]string{"type": kind}
-	}
-	requiredNames := make([]string, 0, len(required))
-	for name := range required {
-		requiredNames = append(requiredNames, name)
-	}
-	sortStrings(requiredNames)
-	schema, _ := json.Marshal(map[string]any{
-		"type": "object", "properties": properties,
-		"required": requiredNames, "additionalProperties": false,
-	})
-	spec.ArgsSchema = string(schema)
-	return NewOperationSpec(spec, func(args map[string]any) error {
-		for name, kind := range required {
-			value, exists := args[name]
-			if !exists {
-				return fmt.Errorf("missing required argument %q", name)
-			}
-			if err := validateArgument(name, kind, value); err != nil {
-				return err
-			}
-		}
-		for name, value := range args {
-			kind, ok := required[name]
-			if !ok {
-				kind, ok = optional[name]
-			}
-			if !ok {
-				return fmt.Errorf("unexpected argument %q", name)
-			}
-			if _, isRequired := required[name]; !isRequired {
-				if err := validateArgument(name, kind, value); err != nil {
-					return err
-				}
-			}
-		}
-		return nil
-	})
-}
-
-func validateArgument(name, kind string, value any) error {
-	valid := false
-	switch kind {
-	case "string":
-		text, ok := value.(string)
-		valid = ok && strings.TrimSpace(text) != ""
-	case "integer":
-		valid = isInteger(value)
-	case "number":
-		valid = isNumber(value)
-	case "boolean":
-		_, valid = value.(bool)
-	case "object":
-		valid = isStringMap(value)
-	case "array":
-		valid = reflect.ValueOf(value).IsValid() && reflect.ValueOf(value).Kind() == reflect.Slice
-	default:
-		return fmt.Errorf("operation schema has unsupported type %q", kind)
-	}
-	if !valid {
-		return fmt.Errorf("argument %q must match type %s (strings must be non-empty)", name, kind)
-	}
-	return nil
-}
-
-func isStringMap(value any) bool {
-	if _, ok := value.(map[string]any); ok {
-		return true
-	}
-	return false
-}
-
-func isInteger(value any) bool {
-	switch number := value.(type) {
-	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
-		return true
-	case float64:
-		return !math.IsNaN(number) && !math.IsInf(number, 0) && math.Trunc(number) == number
-	case float32:
-		return !math.IsNaN(float64(number)) && !math.IsInf(float64(number), 0) && math.Trunc(float64(number)) == float64(number)
-	default:
-		return false
-	}
-}
-
-func isNumber(value any) bool {
-	switch number := value.(type) {
-	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
-		return true
-	case float32:
-		return !math.IsNaN(float64(number)) && !math.IsInf(float64(number), 0)
-	case float64:
-		return !math.IsNaN(number) && !math.IsInf(number, 0)
-	default:
-		return false
-	}
-}
-
-func sortStrings(values []string) {
-	for i := 1; i < len(values); i++ {
-		for j := i; j > 0 && values[j] < values[j-1]; j-- {
-			values[j], values[j-1] = values[j-1], values[j]
-		}
-	}
 }
